@@ -1,0 +1,15 @@
+# PyCharm
+.idea
+
+# Python execution files
+__pycache__/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Autoenv
+.autoenv.zsh
+.autoenv_leave.zsh
