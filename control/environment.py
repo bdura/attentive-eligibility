@@ -1,41 +1,31 @@
 import gym
 import numpy as np
 
-from control.utils import softmax, BaseAgent
+from control.utils import softmax, BaseEnvironment
 
 
-class Agent(BaseAgent):
+class Environment(BaseEnvironment):
 
-    def __init__(self, environment, temperature=1, gamma=1, alpha=1, seed=None, verbose=False):
+    def __init__(self, environment, agent, temperature=1, gamma=1, alpha=.1, decay=.9, seed=None, verbose=False):
 
-        super(Agent, self).__init__(verbose=verbose)
+        super(Environment, self).__init__(verbose=verbose)
 
         np.random.seed(seed)
 
         self.environment = environment
+        self.agent = agent
 
-        # Assert that the environment has discrete state-action space
-        assert isinstance(environment.action_space, gym.spaces.Discrete)
-        assert isinstance(environment.observation_space, gym.spaces.Discrete)
+        # There are 4 possible actions
+        self.n_actions = 4
 
-        # Building the action-value function
-        self.n = int(environment.observation_space.n)
-        self.m = int(environment.action_space.n)
-        self.q = np.zeros((self.n, self.m))
-
-        # Parameter of the agent
         self.temperature = temperature
+
         self.gamma = gamma
         self.alpha = alpha
+        self.decay = decay
 
         self.state = None
         self.action = None
-
-    def initialise(self):
-        """
-        Initialises the agent by setting the action-value function to 0.
-        """
-        self.q = np.zeros((self.n, self.m))
 
     def greedy(self, state):
         """
@@ -48,7 +38,9 @@ class Agent(BaseAgent):
             best_as (np.array): Array (of possibly one element only) containing the greedy actions to perform.
         """
 
-        best_as = np.arange(self.m)[self.q[state] == self.q[state].max()]
+        q = self.agent(state)
+
+        best_as = np.arange(self.n_actions)[q == q.max()]
 
         return best_as
 
@@ -68,7 +60,7 @@ class Agent(BaseAgent):
 
         best_as = self.greedy(state)
 
-        p = np.ones(self.m) * epsilon / self.m
+        p = np.ones(self.n_actions) * epsilon / self.n_actions
         p[best_as] += (1 - epsilon) / len(best_as)
 
         return p
@@ -85,8 +77,9 @@ class Agent(BaseAgent):
 
         """
 
-        values = self.q[state]
-        p = softmax(values / self.temperature)
+        q = self.agent(state)
+
+        p = softmax(q / self.temperature)
 
         return p
 
@@ -101,7 +94,7 @@ class Agent(BaseAgent):
             action (int): The next action to take
         """
 
-        action = np.random.choice(self.m, p=p)
+        action = np.random.choice(self.n_actions, p=p)
         return action
 
     def backup(self):
@@ -145,9 +138,12 @@ class Agent(BaseAgent):
         full_return = 0.
 
         self.state = self.environment.reset()
-        p = self.boltzmann(self.state)
 
-        self.action = np.random.choice(self.greedy(self.state)) if evaluation else self.sample_action(p)
+        if evaluation:
+            self.action = np.random.choice(self.greedy(self.state))
+        else:
+            p = self.boltzmann(self.state)
+            self.action = self.sample_action(p)
 
         while not done:
             done, reward = step()
@@ -184,8 +180,6 @@ class Agent(BaseAgent):
                 by each segment.
         """
 
-        self.initialise()
-
         iterator = self.tqdm(range(segments), ascii=True, ncols=100)
 
         returns = np.array([self.segment() for _ in iterator])
@@ -193,7 +187,7 @@ class Agent(BaseAgent):
         return returns
 
 
-class Sarsa(Agent):
+class Sarsa(Environment):
 
     def backup(self):
         """
@@ -208,10 +202,10 @@ class Sarsa(Agent):
         p = self.boltzmann(s)
         a = self.sample_action(p)
 
+        target = r + self.gamma * self.agent.q(s)[a]
+
         # Regular Sarsa is an on-policy method
-        diff = r + self.gamma * self.q[s, a] - self.q[self.state, self.action]
-
-        self.q[self.state, self.action] += self.alpha * diff
+        self.agent.update(state=self.state, action=self.action, target=target)
 
         # We store the new state and action
         self.state, self.action = s, a
@@ -219,11 +213,11 @@ class Sarsa(Agent):
         return d, r
 
 
-class ExpectedSarsa(Agent):
+class ExpectedSarsa(Environment):
 
     def backup(self):
         """
-        Performs a single Expected-Sarsa step.
+        Performs a single Sarsa backup (state-action -> reward -> state-action).
 
         Returns:
             d (bool): Whether we've reached the end of the episode.
@@ -234,10 +228,10 @@ class ExpectedSarsa(Agent):
         p = self.boltzmann(s)
         a = self.sample_action(p)
 
-        # In Expected-Sarsa, we make a weighted sum
-        diff = r + self.gamma * (p @ self.q[s]) - self.q[self.state, self.action]
+        target = r + self.gamma * p @ self.agent.q(s)
 
-        self.q[self.state, self.action] += self.alpha * diff
+        # Regular Sarsa is an on-policy method
+        self.agent.update(state=self.state, action=self.action, target=target)
 
         # We store the new state and action
         self.state, self.action = s, a
@@ -245,15 +239,14 @@ class ExpectedSarsa(Agent):
         return d, r
 
 
-class QLearning(Agent):
+class QLearning(Environment):
 
     def backup(self):
         """
-        Performs a single Q-Learning step.
+        Performs a single Sarsa backup (state-action -> reward -> state-action).
 
         Returns:
             d (bool): Whether we've reached the end of the episode.
-            r (float): The reward obtained from this step.
         """
 
         s, r, d, i = self.environment.step(self.action)
@@ -261,10 +254,10 @@ class QLearning(Agent):
         p = self.boltzmann(s)
         a = self.sample_action(p)
 
-        # In Q-Learning, we make the optimistic choice
-        diff = r + self.gamma * self.q[s].max() - self.q[self.state, self.action]
+        target = r + self.gamma * self.agent.q(s).max()
 
-        self.q[self.state, self.action] += self.alpha * diff
+        # Regular Sarsa is an on-policy method
+        self.agent.update(state=self.state, action=self.action, target=target)
 
         # We store the new state and action
         self.state, self.action = s, a

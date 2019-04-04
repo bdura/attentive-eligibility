@@ -82,7 +82,7 @@ def delete(func):
     return f
 
 
-class BaseAgent:
+class BaseEnvironment:
 
     def __init__(self, verbose):
         self.verbose = verbose
