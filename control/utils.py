@@ -95,3 +95,38 @@ class BaseEnvironment:
         if self.verbose:
             return tqdm(iterator, ascii=ascii, ncols=ncols, *args, **kwargs)
         return iterator
+
+
+class BaseAgent(object):
+
+    def q(self, state):
+        """
+        Defines a method that returns the approximation for the action-value function.
+
+        Args:
+            state (np.array): An array defining the state.
+
+        Returns:
+            actions (np.array): The value of each action.
+        """
+
+        pass
+
+    def update(self, state, action, target):
+        """
+        Performs an update of the value function.
+
+        Args:
+            state (np.array): An array defining the state.
+            action (int): The action taken.
+            target (float): The TD-target for the state-action pair.
+        """
+        pass
+
+    def eval(self):
+        """Puts the agent in evaluation mode"""
+        pass
+
+    def train(self):
+        """Puts the agent in training mode"""
+        pass
