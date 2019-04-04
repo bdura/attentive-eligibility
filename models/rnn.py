@@ -7,12 +7,14 @@ from collections import deque
 class RNN(nn.Module):
 
     def __init__(self, input_dimension=5, hidden_dimension=5, key_dimension=4,
-                 n_actions=4, dropout=.1, horizon=-1):
+                 n_actions=4, dropout=.1, horizon=-1, batch_size=1):
 
         super(RNN, self).__init__()
 
         self.activation = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
+
+        self.batch_size = batch_size
 
         self.input_layer = nn.Linear(input_dimension, hidden_dimension)
 
@@ -22,7 +24,7 @@ class RNN(nn.Module):
         self.key = nn.Linear(hidden_dimension, key_dimension)
         self.query = nn.Linear(hidden_dimension, key_dimension)
 
-        self.first_context = nn.Parameter(torch.zeros(2, 5))
+        self.first_context = nn.Parameter(torch.zeros(batch_size, hidden_dimension))
 
         self.context = deque()
         self.keys = deque()
@@ -45,13 +47,9 @@ class RNN(nn.Module):
 
         Args:
             x (torch.Tensor): The input vector.
-            # context (torch.Tensor): A torch tensor containing the past context.
-            # keys (torch.Tensor): A torch tensor containing the past keys.
 
         Returns:
             actions (torch.Tensor): The estimated action-value function on the current state.
-            context (torch.Tensor): The full context.
-            keys (torch.Tensor): The full keys
         """
 
         x = self.input_layer(x)
@@ -77,7 +75,8 @@ class RNN(nn.Module):
 
         keys = torch.stack(tuple(self.keys))
 
-        attention = nn.functional.softmax((keys.unsqueeze(2) @ query.unsqueeze(0).unsqueeze(3)).squeeze(-1), dim=0)
+        pre_attention = (keys.unsqueeze(2) @ query.unsqueeze(0).unsqueeze(3)).squeeze(-1)
+        attention = nn.functional.softmax(pre_attention, dim=0)
 
         weighted_context = (attention * context).sum(dim=0)
 
