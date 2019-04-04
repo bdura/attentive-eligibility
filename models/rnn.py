@@ -33,7 +33,7 @@ class RNN(nn.Module):
 
         self.first_context = nn.Parameter(torch.zeros(batch_size, hidden_dimension))
 
-        self.context = self.first_context
+        self.context = torch.zeros(batch_size, hidden_dimension)
 
         self.action_layer = nn.Linear(hidden_dimension, n_actions)
 
@@ -52,7 +52,7 @@ class RNN(nn.Module):
         x = self.activation(x)
         x = self.dropout(x)
 
-        x = self.context_layer(torch.cat((self.context[-1], x), dim=1))
+        x = self.context_layer(torch.cat((self.context, x), dim=1))
         x = self.activation(x)
 
         self.context = x
