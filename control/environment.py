@@ -38,7 +38,7 @@ class Environment(BaseEnvironment):
             best_as (np.array): Array (of possibly one element only) containing the greedy actions to perform.
         """
 
-        q = self.agent(state)
+        q = self.agent.q(state)
 
         best_as = np.arange(self.n_actions)[q == q.max()]
 
@@ -77,7 +77,7 @@ class Environment(BaseEnvironment):
 
         """
 
-        q = self.agent(state)
+        q = self.agent.q(state)
 
         p = softmax(q / self.temperature)
 
