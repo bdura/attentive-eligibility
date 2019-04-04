@@ -91,9 +91,14 @@ class DQNAgent(BaseAgent):
 
         state = self.state(state)
 
-        q = self.model(state)[action]
+        # Add a batch dimension
+        state = state.unsqueeze(0)
 
-        loss = self.criterion(q, target)
-        loss.backward()
+        actions = self.model(state)
+
+        q = actions.squeeze()[action]
+
+        loss = self.criterion(q, torch.tensor(target))
+        loss.backward(retain_graph=True)
 
         self.optimiser.step()
