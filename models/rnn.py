@@ -5,11 +5,83 @@ from collections import deque
 
 
 class RNN(nn.Module):
+    """A simple RNN for solving RL problems"""
+
+    def __init__(self, input_dimension=5, hidden_dimension=5,
+                 n_actions=4, dropout=.1, batch_size=1):
+        """
+        Initialises the object.
+
+        Args:
+            input_dimension (int): The dimension of the input.
+            hidden_dimension (int): The dimension of the hidden unit.
+            n_actions (int): The number of possible actions.
+            dropout (float): The dropout factor.
+            batch_size (int): The batch size.
+        """
+
+        super(RNN, self).__init__()
+
+        self.activation = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
+
+        self.batch_size = batch_size
+
+        self.input_layer = nn.Linear(input_dimension, hidden_dimension)
+
+        self.context_layer = nn.Linear(2 * hidden_dimension, hidden_dimension)
+
+        self.first_context = nn.Parameter(torch.zeros(batch_size, hidden_dimension))
+
+        self.context = self.first_context
+
+        self.action_layer = nn.Linear(hidden_dimension, n_actions)
+
+    def forward(self, x):
+        """
+        Performs the forward computation.
+
+        Args:
+            x (torch.Tensor): The input vector.
+
+        Returns:
+            actions (torch.Tensor): The estimated action-value function on the current state.
+        """
+
+        x = self.input_layer(x)
+        x = self.activation(x)
+        x = self.dropout(x)
+
+        x = self.context_layer(torch.cat((self.context[-1], x), dim=1))
+        x = self.activation(x)
+
+        self.context = x
+
+        x = self.dropout(x)
+
+        actions = self.action_layer(x)
+
+        return actions
+
+
+class AttentiveRNN(nn.Module):
 
     def __init__(self, input_dimension=5, hidden_dimension=5, key_dimension=4,
                  n_actions=4, dropout=.1, horizon=-1, batch_size=1):
+        """
+        Initialises the object.
 
-        super(RNN, self).__init__()
+        Args:
+            input_dimension (int): The dimension of the input.
+            hidden_dimension (int): The dimension of the hidden unit.
+            key_dimension (int): The dimension of the keys/queries.
+            n_actions (int): The number of possible actions.
+            dropout (float): The dropout factor.
+            horizon (int): The number of contexts considered during the attention phase. -1 means consider all.
+            batch_size (int): The batch size.
+        """
+
+        super(AttentiveRNN, self).__init__()
 
         self.activation = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
