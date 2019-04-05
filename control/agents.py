@@ -102,3 +102,8 @@ class DQNAgent(BaseAgent):
         loss.backward(retain_graph=True)
 
         self.optimiser.step()
+
+    def reset(self):
+        """Resets the model"""
+
+        self.model.reset()

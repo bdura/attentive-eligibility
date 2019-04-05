@@ -1,4 +1,3 @@
-import gym
 import numpy as np
 
 from control.utils import softmax, BaseEnvironment
@@ -129,10 +128,14 @@ class Environment(BaseEnvironment):
             full_return (float): The full return obtained during the experiment.
         """
 
+        self.agent.reset()
+
         if evaluation:
             step = self.evaluate
+            self.agent.eval()
         else:
             step = self.backup
+            self.agent.train()
 
         done = False
         full_return = 0.
@@ -145,6 +148,7 @@ class Environment(BaseEnvironment):
             p = self.boltzmann(self.state)
             self.action = self.sample_action(p)
 
+        counter = 0
         while not done:
             done, reward = step()
             full_return = self.gamma * full_return + reward

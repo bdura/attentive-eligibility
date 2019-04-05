@@ -130,3 +130,7 @@ class BaseAgent(object):
     def train(self):
         """Puts the agent in training mode"""
         pass
+
+    def reset(self):
+        """Resets the agent"""
+        pass
