@@ -116,9 +116,9 @@ class AttentiveRNN(nn.Module):
         self.context.clear()
         self.keys.clear()
 
-        self.context.append(self.first_context.data)
+        self.context.append(self.first_context)
 
-        self.keys.append(self.key(self.first_context.data))
+        self.keys.append(self.key(self.first_context))
 
     def forward(self, x):
         """

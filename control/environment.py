@@ -152,6 +152,9 @@ class Environment(BaseEnvironment):
         while not done:
             done, reward = step()
             full_return = self.gamma * full_return + reward
+            counter += 1
+
+        self.print('Performed {} steps'.format(counter))
 
         return full_return
 
