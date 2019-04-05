@@ -7,8 +7,7 @@ from collections import deque
 class RNN(nn.Module):
     """A simple RNN for solving RL problems"""
 
-    def __init__(self, input_dimension=5, hidden_dimension=5,
-                 n_actions=4, dropout=.1, batch_size=1):
+    def __init__(self, input_dimension=5, hidden_dimension=5, n_actions=4, dropout=.1):
         """
         Initialises the object.
 
@@ -17,7 +16,6 @@ class RNN(nn.Module):
             hidden_dimension (int): The dimension of the hidden unit.
             n_actions (int): The number of possible actions.
             dropout (float): The dropout factor.
-            batch_size (int): The batch size.
         """
 
         super(RNN, self).__init__()
@@ -25,13 +23,11 @@ class RNN(nn.Module):
         self.activation = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
 
-        self.batch_size = batch_size
-
         self.input_layer = nn.Linear(input_dimension, hidden_dimension)
 
         self.context_layer = nn.Linear(2 * hidden_dimension, hidden_dimension)
 
-        self.first_context = nn.Parameter(torch.zeros(batch_size, hidden_dimension))
+        self.first_context = nn.Parameter(torch.zeros((1, hidden_dimension)))
 
         self.context = None
 
@@ -55,7 +51,9 @@ class RNN(nn.Module):
         if self.context is not None:
             x = self.context_layer(torch.cat((self.context, x), dim=1))
         else:
-            x = self.context_layer(torch.cat((self.first_context, x), dim=1))
+            n = x.size(0)
+            context = torch.cat(tuple([self.first_context for _ in range(n)]))
+            x = self.context_layer(torch.cat((context, x), dim=1))
 
         x = self.activation(x)
 
@@ -68,13 +66,14 @@ class RNN(nn.Module):
         return actions
 
     def reset(self):
+        """Resets the time-dependency of the model"""
         self.context = None
 
 
 class AttentiveRNN(nn.Module):
 
     def __init__(self, input_dimension=5, hidden_dimension=5, key_dimension=4,
-                 n_actions=4, dropout=.1, horizon=-1, batch_size=1):
+                 n_actions=4, dropout=.1, horizon=-1):
         """
         Initialises the object.
 
@@ -85,15 +84,12 @@ class AttentiveRNN(nn.Module):
             n_actions (int): The number of possible actions.
             dropout (float): The dropout factor.
             horizon (int): The number of contexts considered during the attention phase. -1 means consider all.
-            batch_size (int): The batch size.
         """
 
         super(AttentiveRNN, self).__init__()
 
         self.activation = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
-
-        self.batch_size = batch_size
 
         self.input_layer = nn.Linear(input_dimension, hidden_dimension)
 
@@ -103,7 +99,7 @@ class AttentiveRNN(nn.Module):
         self.key = nn.Linear(hidden_dimension, key_dimension)
         self.query = nn.Linear(hidden_dimension, key_dimension)
 
-        self.first_context = nn.Parameter(torch.zeros(batch_size, hidden_dimension))
+        self.first_context = nn.Parameter(torch.zeros(1, hidden_dimension))
 
         self.context = deque()
         self.keys = deque()
@@ -112,13 +108,10 @@ class AttentiveRNN(nn.Module):
         self.action_layer = nn.Linear(hidden_dimension, n_actions)
 
     def reset(self):
+        """Resets the time-dependency of the model"""
 
         self.context.clear()
         self.keys.clear()
-
-        self.context.append(self.first_context)
-
-        self.keys.append(self.key(self.first_context))
 
     def forward(self, x):
         """
@@ -130,6 +123,12 @@ class AttentiveRNN(nn.Module):
         Returns:
             actions (torch.Tensor): The estimated action-value function on the current state.
         """
+
+        if len(self.context) == 0:
+            n = x.size(0)
+            context = torch.cat(tuple([self.first_context for _ in range(n)]))
+            self.context.append(context)
+            self.keys.append(self.key(context))
 
         x = self.input_layer(x)
         x = self.activation(x)
