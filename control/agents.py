@@ -101,6 +101,9 @@ class DQNAgent(BaseAgent):
         loss = self.criterion(q, torch.tensor(target))
         loss.backward(retain_graph=True)
 
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
+
         self.optimiser.step()
 
     def reset(self):
