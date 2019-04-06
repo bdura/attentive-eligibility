@@ -106,7 +106,7 @@ class DQNAgent(BaseAgent):
 
         q = actions.squeeze()[action]
 
-        loss = self.criterion(q, torch.tensor(target))
+        loss = self.criterion(q, torch.tensor(target).to(self.device))
         loss.backward(retain_graph=True)
 
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
