@@ -4,6 +4,8 @@ import numpy as np
 from tqdm import tqdm
 
 import gc
+import os
+import json
 
 from functools import wraps
 
@@ -134,3 +136,10 @@ class BaseAgent(object):
     def reset(self):
         """Resets the agent"""
         pass
+
+
+def save_json(obj, directory, name):
+    path = os.path.join(directory, name)
+
+    with open(path, 'w') as f:
+        json.dump(obj, f, indent=2)

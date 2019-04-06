@@ -1,6 +1,7 @@
 import numpy as np
+import os
 
-from control.utils import softmax, BaseEnvironment
+from control.utils import softmax, BaseEnvironment, save_json
 
 
 class Environment(BaseEnvironment):
@@ -160,9 +161,7 @@ class Environment(BaseEnvironment):
             full_return = self.gamma * full_return + reward
             counter += 1
 
-        # self.print('Performed {} steps'.format(counter))
-
-        return full_return
+        return full_return, counter
 
     def segment(self, episodes=10):
         """
@@ -176,8 +175,10 @@ class Environment(BaseEnvironment):
             (float): The return obtained after the evaluation episode.
         """
 
-        training_return = np.mean([self.episode() for _ in range(episodes)])
-        testing_return = self.episode(evaluation=True)
+        self.agent.commit()
+
+        training_return = np.mean([self.episode()[0] for _ in range(episodes)])
+        testing_return = self.episode(evaluation=True)[0]
 
         return training_return, testing_return
 
@@ -199,6 +200,22 @@ class Environment(BaseEnvironment):
 
         return returns
 
+    def save(self, directory):
+
+        os.makedirs(directory, exist_ok=True)
+
+        config = {
+            'temperature': self.temperature,
+            'gamma': self.gamma,
+            'alpha': self.alpha,
+            'decay': self.decay,
+            'max_steps': self.max_steps,
+        }
+
+        save_json(config, directory, 'env_config.json')
+
+        self.agent.save(directory)
+
 
 class Sarsa(Environment):
 
@@ -212,7 +229,7 @@ class Sarsa(Environment):
 
         s, r, d, i = self.environment.step(self.action)
 
-        p = self.boltzmann(s)
+        p = self.epsilon_greedy(s, 1)
         a = self.sample_action(p)
 
         target = r + self.gamma * self.agent.q(s)[a]
@@ -238,7 +255,8 @@ class ExpectedSarsa(Environment):
 
         s, r, d, i = self.environment.step(self.action)
 
-        p = self.boltzmann(s)
+        # p = self.boltzmann(s)
+        p = self.epsilon_greedy(s, 1)
         a = self.sample_action(p)
 
         target = r + self.gamma * p @ self.agent.q(s)

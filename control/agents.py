@@ -21,7 +21,7 @@ class DQNAgent(BaseAgent):
     A general class for value approximation by a neural network
     """
 
-    def __init__(self, model, optimiser, max_count=1000):
+    def __init__(self, model, optimiser):
         """
         Initialises the object.
 
@@ -38,15 +38,8 @@ class DQNAgent(BaseAgent):
         self.criterion = nn.MSELoss()
         self.optimiser = optimiser
 
-        self.count = 0
-        self.max_count = max_count
-
     def commit(self):
-        self.count += 1
-
-        if self.count == self.max_count:
-            self.count = 0
-            self.fixed = copy.deepcopy(self.model).eval()
+        self.fixed.load_state_dict(copy.deepcopy(self.model.state_dict()))
 
     def state(self, state):
         """
@@ -126,3 +119,9 @@ class DQNAgent(BaseAgent):
 
         self.model.reset()
         self.fixed.reset()
+
+        # self.commit()
+
+    def save(self, directory):
+
+        torch.save(self.model.cpu().state_dict(), '{}/model_weights.pth'.format(directory))
