@@ -258,8 +258,8 @@ class ExpectedSarsa(Environment):
 
         s, r, d, i = self.environment.step(self.action)
 
-        # p = self.boltzmann(s)
-        p = self.epsilon_greedy(s, 1)
+        p = self.boltzmann(s)
+        # p = self.epsilon_greedy(s, 1)
         a = self.sample_action(p)
 
         target = r + self.gamma * p @ self.agent.q(s)
