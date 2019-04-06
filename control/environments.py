@@ -2,6 +2,7 @@ import numpy as np
 import os
 
 from control.utils import softmax, BaseEnvironment, save_json
+from control.utils import Episode, ReplayMemory
 
 
 class Environment(BaseEnvironment):
@@ -29,6 +30,8 @@ class Environment(BaseEnvironment):
         self.action = None
 
         self.max_steps = max_steps
+
+        self.replay_memory = ReplayMemory(capacity=1000)
 
     def greedy(self, state):
         """
