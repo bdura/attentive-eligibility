@@ -65,6 +65,36 @@ class RNN(nn.Module):
 
         return actions
 
+    def predict(self, x):
+        """
+        Performs an alternative forward computation, wherein gradients are
+        not computed and the context is left unchanged.
+
+        Args:
+            x (torch.Tensor): The input vector.
+
+        Returns:
+            actions (torch.Tensor): The estimated action-value function on the current state.
+        """
+
+        with torch.no_grad():
+
+            x = self.input_layer(x)
+            x = self.activation(x)
+
+            if self.context is not None:
+                x = self.context_layer(torch.cat((self.context, x), dim=1))
+            else:
+                n = x.size(0)
+                context = torch.cat(tuple([self.first_context for _ in range(n)]))
+                x = self.context_layer(torch.cat((context, x), dim=1))
+
+            x = self.activation(x)
+
+            actions = self.action_layer(x)
+
+            return actions
+
     def reset(self):
         """Resets the time-dependency of the model"""
         self.context = None
@@ -161,6 +191,62 @@ class AttentiveRNN(nn.Module):
         actions = self.action_layer(weighted_context)
 
         return actions
+
+    def predict(self, x):
+        """
+        Performs an alternative forward computation, wherein gradients are
+        not computed and the context is left unchanged.
+
+        Args:
+            x (torch.Tensor): The input vector.
+
+        Returns:
+            actions (torch.Tensor): The estimated action-value function on the current state.
+        """
+
+        full_context = deque()
+        full_context.extend(self.context)
+
+        full_keys = deque()
+        full_keys.extend(self.keys)
+
+        with torch.no_grad():
+
+            if len(self.context) == 0:
+                n = x.size(0)
+                context = torch.cat(tuple([self.first_context for _ in range(n)]))
+                full_context.append(context)
+                full_keys.append(self.key(context))
+
+            x = self.input_layer(x)
+            x = self.activation(x)
+
+            x = self.context_layer(torch.cat((full_context[-1], x), dim=1))
+            x = self.activation(x)
+
+            full_context.append(x)
+            if self.horizon > -1 and len(full_context) > self.horizon + 1:
+                full_context.popleft()
+
+            context = torch.stack(tuple(full_context))
+
+            query = self.query(x)
+            key = self.key(x)
+
+            full_keys.append(key)
+            if self.horizon > -1 and len(full_keys) > self.horizon + 1:
+                full_keys.popleft()
+
+            keys = torch.stack(tuple(full_keys))
+
+            pre_attention = (keys.unsqueeze(2) @ query.unsqueeze(0).unsqueeze(3)).squeeze(-1)
+            attention = nn.functional.softmax(pre_attention, dim=0)
+
+            weighted_context = (attention * context).sum(dim=0)
+
+            actions = self.action_layer(weighted_context)
+
+            return actions
 
 
 if __name__ == '__main__':
