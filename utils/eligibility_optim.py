@@ -34,6 +34,6 @@ class EligibilitySGD(Optimizer):
             e.add_(torch.mul(decay, e), d_p)
 
             # update param
-            p.data.add_(d_p, torch.mul(-group['lr'], d_t))
+            p.data.add_(e, torch.mul(-group['lr'], d_t))
 
         return loss
