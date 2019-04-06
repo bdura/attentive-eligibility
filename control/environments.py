@@ -208,7 +208,7 @@ class Environment(BaseEnvironment):
 
         return full_return, counter
 
-    def play_episode(self):
+    def exploration_episode(self):
 
         episode = Episode()
 
@@ -252,7 +252,7 @@ class Environment(BaseEnvironment):
 
         return training_return, testing_return
 
-    def play_segment(self, episodes=100):
+    def exploration_segment(self, episodes=100):
         """
         Runs a full segment, which consists of ten training episodes followed by
         one evaluation episode (following the greedy policy obtained so far).
@@ -266,7 +266,7 @@ class Environment(BaseEnvironment):
 
         # self.agent.commit()
 
-        training_return = np.mean([self.play_episode()[0] for _ in range(episodes)])
+        training_return = np.mean([self.exploration_episode()[0] for _ in range(episodes)])
         testing_return = self.episode(evaluation=True)[0]
 
         return training_return, testing_return
@@ -315,6 +315,22 @@ class Environment(BaseEnvironment):
         returns = np.array([self.segment() for _ in iterator])
 
         return returns
+
+    def train(self, segments=100, episodes=100):
+
+        iterator = self.tqdm(range(segments), ascii=True, ncols=100)
+
+        returns = []
+
+        for i in iterator:
+
+            self.agent.commit()
+            returns.append(self.exploration_segment(episodes))
+
+            for _ in range((i + 1) ** 2):
+                self.batch(50)
+
+        return np.array(returns)
 
     def save(self, directory):
 
@@ -375,6 +391,6 @@ if __name__ == '__main__':
         max_steps=1000
     )
 
-    environment.play_segment(1)
+    environment.exploration_segment(1)
 
     environment.batch(batch_size=2)
