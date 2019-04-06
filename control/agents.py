@@ -85,7 +85,7 @@ class DQNAgent(BaseAgent):
             # Remove the batch dimension
             actions = actions.squeeze()
 
-            return actions.detach().numpy()
+            return actions.detach().cpu().numpy()
 
     def update(self, state, action, target):
         """
