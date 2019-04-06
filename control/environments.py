@@ -2,12 +2,12 @@ import numpy as np
 import os
 
 from control.utils import softmax, BaseEnvironment, save_json
-from control.utils import Episode, ReplayMemory
+from control.utils import Episode, ReplayMemory, Transition
 
 
 class Environment(BaseEnvironment):
 
-    def __init__(self, environment, agent, temperature=1, gamma=1, alpha=.1,
+    def __init__(self, environment, agent, temperature=1., gamma=1., alpha=.1,
                  decay=.9, seed=None, verbose=False, max_steps=1000):
 
         super(Environment, self).__init__(verbose=verbose)
@@ -71,12 +71,13 @@ class Environment(BaseEnvironment):
 
         return p
 
-    def boltzmann(self, state):
+    def boltzmann(self, state, return_q=False):
         """
         Returns the softmax-weighting of the available actions.
 
         Args:
-            state: The current state
+            state: The current state.
+            return_q (bool): Whether to return the vector of qs.
 
         Returns:
             p (np.array): The Boltzmann (softmax) weighting of the available actions.
@@ -86,6 +87,9 @@ class Environment(BaseEnvironment):
         q = self.agent.q(state)
 
         p = softmax(q / self.temperature)
+
+        if return_q:
+            return p, q
 
         return p
 
@@ -103,8 +107,25 @@ class Environment(BaseEnvironment):
         action = np.random.choice(self.n_actions, p=p)
         return action
 
-    def backup(self):
+    def target(self, reward, next_state, next_action, probability):
         pass
+
+    def backup(self):
+        s, r, d, i = self.environment.step(self.action)
+
+        p, q = self.boltzmann(s, return_q=True)
+        # p = self.epsilon_greedy(s, 1)
+        a = self.sample_action(p)
+
+        target = self.target(r, s, a, p)
+
+        # Regular Sarsa is an on-policy method
+        self.agent.update(state=self.state, action=self.action, target=target)
+
+        # We store the new state and action
+        self.state, self.action = s, a
+
+        return d, r
 
     def evaluate(self):
         """
@@ -123,6 +144,27 @@ class Environment(BaseEnvironment):
         self.state, self.action = s, a
 
         return d, r
+
+    def explore(self):
+        """
+        Performs a single exploration step and stores the results in the buffer.
+
+        Returns:
+            d (bool): Whether we've reached the end of the episode.
+        """
+
+        s, r, d, i = self.environment.step(self.action)
+
+        # If there are ties, we might want to choose between actions at random
+        p, q = self.boltzmann(s, return_q=True)
+        a = self.sample_action(p)
+
+        transition = Transition(self.state, self.action, self.target(r, s, a, p))
+
+        # We store the new state and action
+        self.state, self.action = s, a
+
+        return d, r, transition
 
     def reset(self):
         self.agent.reset()
@@ -166,6 +208,31 @@ class Environment(BaseEnvironment):
 
         return full_return, counter
 
+    def play_episode(self):
+
+        episode = Episode()
+
+        self.reset()
+
+        done = False
+        full_return = 0.
+
+        p = self.boltzmann(self.state)
+        self.action = self.sample_action(p)
+
+        counter = 0
+        while not done and counter < self.max_steps:
+
+            done, reward, transition = self.explore()
+            episode.push(transition)
+
+            full_return = self.gamma * full_return + reward
+            counter += 1
+
+        self.replay_memory.push(episode)
+
+        return full_return, counter
+
     def segment(self, episodes=10):
         """
         Runs a full segment, which consists of ten training episodes followed by
@@ -184,6 +251,52 @@ class Environment(BaseEnvironment):
         testing_return = self.episode(evaluation=True)[0]
 
         return training_return, testing_return
+
+    def play_segment(self, episodes=100):
+        """
+        Runs a full segment, which consists of ten training episodes followed by
+        one evaluation episode (following the greedy policy obtained so far).
+
+        Args:
+            episodes (int): The number of training episodes to run (and average).
+
+        Returns:
+            (float): The return obtained after the evaluation episode.
+        """
+
+        # self.agent.commit()
+
+        training_return = np.mean([self.play_episode()[0] for _ in range(episodes)])
+        testing_return = self.episode(evaluation=True)[0]
+
+        return training_return, testing_return
+
+    def batch(self, batch_size=20):
+
+        assert len(self.replay_memory) > 0
+
+        buffer = self.replay_memory
+
+        episodes = buffer.sample(batch_size)
+
+        length = np.min([len(episode) for episode in buffer.memory])
+
+        states = []
+        actions = []
+        targets = []
+
+        for episode in episodes:
+            s, a, t = episode.output(length=length)
+
+            states.append(s)
+            actions.append(a)
+            targets.append(t)
+
+        states = np.stack(states).swapaxes(0, 1)
+        actions = np.stack(actions).swapaxes(0, 1)
+        targets = np.stack(targets).swapaxes(0, 1)
+
+        self.agent.batch_update(states, actions, targets)
 
     def run(self, segments=100):
         """
@@ -222,78 +335,46 @@ class Environment(BaseEnvironment):
 
 class Sarsa(Environment):
 
-    def backup(self):
-        """
-        Performs a single Sarsa backup (state-action -> reward -> state-action).
-
-        Returns:
-            d (bool): Whether we've reached the end of the episode.
-        """
-
-        s, r, d, i = self.environment.step(self.action)
-
-        p = self.epsilon_greedy(s, 1)
-        a = self.sample_action(p)
-
-        target = r + self.gamma * self.agent.q(s)[a]
-
-        # Regular Sarsa is an on-policy method
-        self.agent.update(state=self.state, action=self.action, target=target)
-
-        # We store the new state and action
-        self.state, self.action = s, a
-
-        return d, r
+    def target(self, reward, next_state, next_action, probability):
+        target = reward + self.gamma * self.agent.q(next_state)[next_action]
+        return target
 
 
 class ExpectedSarsa(Environment):
 
-    def backup(self):
-        """
-        Performs a single Sarsa backup (state-action -> reward -> state-action).
-
-        Returns:
-            d (bool): Whether we've reached the end of the episode.
-        """
-
-        s, r, d, i = self.environment.step(self.action)
-
-        p = self.boltzmann(s)
-        # p = self.epsilon_greedy(s, 1)
-        a = self.sample_action(p)
-
-        target = r + self.gamma * p @ self.agent.q(s)
-
-        # Regular Sarsa is an on-policy method
-        self.agent.update(state=self.state, action=self.action, target=target)
-
-        # We store the new state and action
-        self.state, self.action = s, a
-
-        return d, r
+    def target(self, reward, next_state, next_action, probability):
+        target = reward + self.gamma * probability @ self.agent.q(next_state)
+        return target
 
 
 class QLearning(Environment):
 
-    def backup(self):
-        """
-        Performs a single Sarsa backup (state-action -> reward -> state-action).
+    def target(self, reward, next_state, next_action, probability):
+        target = reward + self.gamma * self.agent.q(next_state).max()
+        return target
 
-        Returns:
-            d (bool): Whether we've reached the end of the episode.
-        """
 
-        s, r, d, i = self.environment.step(self.action)
+if __name__ == '__main__':
+    import models.mlp as mlps
+    import control.agents as agents
 
-        p = self.boltzmann(s)
-        a = self.sample_action(p)
+    import torch
+    import gym
 
-        target = r + self.gamma * self.agent.q(s).max()
+    model = mlps.MLP()
+    optimiser = torch.optim.Adam(model.parameters(), lr=.001)
 
-        # Regular Sarsa is an on-policy method
-        self.agent.update(state=self.state, action=self.action, target=target)
+    agent = agents.DQNAgent(model, optimiser)
 
-        # We store the new state and action
-        self.state, self.action = s, a
+    environment = ExpectedSarsa(
+        environment=gym.make('Breakout-ram-v0'),
+        agent=agent,
+        gamma=.999,
+        temperature=10,
+        verbose=True,
+        max_steps=1000
+    )
 
-        return d, r
+    environment.play_segment(1)
+
+    environment.batch(batch_size=2)

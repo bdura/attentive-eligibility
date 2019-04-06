@@ -125,24 +125,26 @@ class DQNAgent(BaseAgent):
 
         self.optimiser.step()
 
-    def multiple_updates(self, states, actions, targets):
+    def batch_update(self, states, actions, targets):
         """
         Performs a gradient descent step on the model.
 
         Args:
             states (np.array): The representation for the state.
             actions (np.array): The action taken.
-            targets (float): The target (be it Sarsa, ExpSarsa or QLearning).
+            targets (np.array): The target (be it Sarsa, ExpSarsa or QLearning).
         """
 
-        states = self.tensorise(states)
+        for state, action, target in zip(states, actions, targets):
 
-        q = torch.index_select(self.model(states), dim=0, index=self.tensorise(actions))
+            state = self.tensorise(state)
 
-        loss = self.criterion(q, self.tensorise(targets))
-        loss.backward(retain_graph=True)
+            q = torch.gather(self.model(state), dim=1, index=self.tensorise(action).unsqueeze(1))
 
-        self.optimiser.step()
+            loss = self.criterion(q, self.tensorise(target))
+            loss.backward(retain_graph=True)
+
+            self.optimiser.step()
 
     def reset(self):
         """Resets the model"""
