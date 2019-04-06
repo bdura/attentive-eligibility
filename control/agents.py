@@ -3,6 +3,8 @@ from torch import nn
 
 from control.utils import BaseAgent
 
+import copy
+
 
 class TabularAgent(BaseAgent):
     """
@@ -19,7 +21,7 @@ class DQNAgent(BaseAgent):
     A general class for value approximation by a neural network
     """
 
-    def __init__(self, model, optimiser):
+    def __init__(self, model, optimiser, max_count=1000):
         """
         Initialises the object.
 
@@ -31,9 +33,20 @@ class DQNAgent(BaseAgent):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.model = model.to(self.device)
+        self.fixed = copy.deepcopy(self.model).eval()
 
         self.criterion = nn.MSELoss()
         self.optimiser = optimiser
+
+        self.count = 0
+        self.max_count = max_count
+
+    def commit(self):
+        self.count += 1
+
+        if self.count == self.max_count:
+            self.count = 0
+            self.fixed = copy.deepcopy(self.model).eval()
 
     def state(self, state):
         """
@@ -67,17 +80,19 @@ class DQNAgent(BaseAgent):
             actions (np.array): The value for each possible action.
         """
 
-        state = self.state(state)
+        with torch.no_grad():
 
-        # Add a batch dimension
-        state = state.unsqueeze(0)
+            state = self.state(state)
 
-        actions = self.model(state)
+            # Add a batch dimension
+            state = state.unsqueeze(0)
 
-        # Remove the batch dimension
-        actions = actions.squeeze()
+            actions = self.fixed(state)
 
-        return actions.detach().numpy()
+            # Remove the batch dimension
+            actions = actions.squeeze()
+
+            return actions.detach().numpy()
 
     def update(self, state, action, target):
         """
@@ -110,3 +125,4 @@ class DQNAgent(BaseAgent):
         """Resets the model"""
 
         self.model.reset()
+        self.fixed.reset()

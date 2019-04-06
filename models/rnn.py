@@ -7,7 +7,7 @@ from collections import deque
 class RNN(nn.Module):
     """A simple RNN for solving RL problems"""
 
-    def __init__(self, input_dimension=5, hidden_dimension=5, n_actions=4, dropout=.1):
+    def __init__(self, input_dimension=5, hidden_dimension=5, n_actions=4, dropout=.1, truncate=20):
         """
         Initialises the object.
 
@@ -16,6 +16,7 @@ class RNN(nn.Module):
             hidden_dimension (int): The dimension of the hidden unit.
             n_actions (int): The number of possible actions.
             dropout (float): The dropout factor.
+            truncate (int): The number of hidden states to backpropagate into.
         """
 
         super(RNN, self).__init__()
@@ -30,6 +31,9 @@ class RNN(nn.Module):
         self.first_context = nn.Parameter(torch.zeros((1, hidden_dimension)))
 
         self.context = None
+
+        self.contexts = deque()
+        self.truncate = truncate
 
         self.action_layer = nn.Linear(hidden_dimension, n_actions)
 
@@ -58,6 +62,10 @@ class RNN(nn.Module):
         x = self.activation(x)
 
         self.context = x
+
+        self.contexts.append(x)
+        if len(self.contexts) > self.truncate:
+            self.contexts.popleft().detach()
 
         x = self.dropout(x)
 

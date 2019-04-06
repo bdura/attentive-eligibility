@@ -5,7 +5,8 @@ from control.utils import softmax, BaseEnvironment
 
 class Environment(BaseEnvironment):
 
-    def __init__(self, environment, agent, temperature=1, gamma=1, alpha=.1, decay=.9, seed=None, verbose=False):
+    def __init__(self, environment, agent, temperature=1, gamma=1, alpha=.1,
+                 decay=.9, seed=None, verbose=False, max_steps=1000):
 
         super(Environment, self).__init__(verbose=verbose)
 
@@ -25,6 +26,8 @@ class Environment(BaseEnvironment):
 
         self.state = None
         self.action = None
+
+        self.max_steps = max_steps
 
     def greedy(self, state):
         """
@@ -117,6 +120,11 @@ class Environment(BaseEnvironment):
 
         return d, r
 
+    def reset(self):
+        self.agent.reset()
+        self.state = self.environment.reset()
+        self.action = np.random.choice(self.greedy(self.state))
+
     def episode(self, evaluation=False):
         """
         Runs a full episode.
@@ -128,7 +136,7 @@ class Environment(BaseEnvironment):
             full_return (float): The full return obtained during the experiment.
         """
 
-        self.agent.reset()
+        self.reset()
 
         if evaluation:
             step = self.evaluate
@@ -140,8 +148,6 @@ class Environment(BaseEnvironment):
         done = False
         full_return = 0.
 
-        self.state = self.environment.reset()
-
         if evaluation:
             self.action = np.random.choice(self.greedy(self.state))
         else:
@@ -149,12 +155,12 @@ class Environment(BaseEnvironment):
             self.action = self.sample_action(p)
 
         counter = 0
-        while not done:
+        while not done and counter < self.max_steps:
             done, reward = step()
             full_return = self.gamma * full_return + reward
             counter += 1
 
-        self.print('Performed {} steps'.format(counter))
+        # self.print('Performed {} steps'.format(counter))
 
         return full_return
 
