@@ -19,6 +19,8 @@ class EligibilitySGD(Optimizer):
                 and returns the loss.
         """
 
+        d_t = torch.sqrt(loss)
+
         for group in self.param_groups:
             gamma = group['gamma']
             lambd = group['lambd']
@@ -32,6 +34,6 @@ class EligibilitySGD(Optimizer):
             e.add_(torch.mul(decay, e), d_p)
 
             # update param
-            p.data.add_(d_p, torch.mul(-group['lr'], loss))
+            p.data.add_(d_p, torch.mul(-group['lr'], d_t))
 
         return loss
