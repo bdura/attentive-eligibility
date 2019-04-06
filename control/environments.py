@@ -31,7 +31,7 @@ class Environment(BaseEnvironment):
 
         self.max_steps = max_steps
 
-        self.replay_memory = ReplayMemory(capacity=1000)
+        self.replay_memory = ReplayMemory(capacity=10000)
 
     def greedy(self, state):
         """
