@@ -148,7 +148,7 @@ class Environment(BaseEnvironment):
     def reset(self):
         self.agent.reset()
         self.state = self.environment.reset()
-        self.action = np.random.choice(self.greedy(self.state))
+        self.action = 1
 
     def evaluation_episode(self):
         """
@@ -166,8 +166,6 @@ class Environment(BaseEnvironment):
         done = False
         full_return = 0.
 
-        self.action = np.random.choice(self.greedy(self.state))
-
         counter = 0
         while not done and counter < self.max_steps:
             done, reward = step()
@@ -184,9 +182,6 @@ class Environment(BaseEnvironment):
 
         done = False
         full_return = 0.
-
-        p = self.boltzmann(self.state)
-        self.action = self.sample_action(p)
 
         counter = 0
         while not done and counter < self.max_steps:
