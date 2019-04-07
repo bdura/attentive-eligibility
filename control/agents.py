@@ -144,7 +144,7 @@ class DQNAgent(BaseAgent):
         elif self.algorithm == 'expsarsa':
             target = reward + self.gamma * probability @ q.T
         else:
-            target = reward + self.gamma * q.max(dim=1)
+            target = reward + self.gamma * q.max(axis=1)
 
         return target
 

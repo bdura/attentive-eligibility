@@ -281,6 +281,19 @@ class Environment(BaseEnvironment):
 
         return np.array(returns)
 
+    def run(self, epochs=10, segments=10, episodes=50):
+
+        self.notify('Beginning training')
+
+        for _ in range(epochs):
+            self.train(segments, episodes)
+
+            mean_return, steps = np.array([self.evaluation_episode() for _ in range(50)]).mean(axis=0)
+
+            self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
+
+        self.notify('Training ended.')
+
     def save(self, directory):
 
         os.makedirs(directory, exist_ok=True)
