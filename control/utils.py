@@ -23,9 +23,14 @@ def softmax(x):
         (np.array): The result of the softmax operation.
     """
 
-    z = x - x.max()
+    if len(x.shape) == 1:
+        axis = 0
+    else:
+        axis = 1
 
-    return np.exp(z)/np.exp(z).sum()
+    z = x - x.max(axis=axis, keepdims=True)
+
+    return np.exp(z)/np.exp(z).sum(axis=axis, keepdims=True)
 
 
 def description(desc):
@@ -103,6 +108,10 @@ class BaseEnvironment:
 
 class BaseAgent(object):
 
+    def __init__(self, temperature=1):
+        self.temperature = temperature
+        self.n_actions = 4
+
     def q(self, state):
         """
         Defines a method that returns the approximation for the action-value function.
@@ -139,6 +148,34 @@ class BaseAgent(object):
         """Resets the agent"""
         pass
 
+    def greedy(self, q):
+
+        best_as = np.arange(self.n_actions)[q == q.max()]
+
+        return best_as
+
+    def epsilon_greedy(self, state, epsilon=.1):
+
+        assert 0 <= epsilon <= 1
+
+        best_as = self.greedy(state)
+
+        p = np.ones(self.n_actions) * epsilon / self.n_actions
+        p[best_as] += (1 - epsilon) / len(best_as)
+
+        return p
+
+    def boltzmann(self, q):
+
+        p = softmax(q / self.temperature)
+
+        return p
+
+    def sample_action(self, p):
+
+        action = np.random.choice(self.n_actions, p=p)
+        return action
+
 
 def save_json(obj, directory, name):
     path = os.path.join(directory, name)
@@ -149,7 +186,7 @@ def save_json(obj, directory, name):
 
 Transition = namedtuple(
     'Transition',
-    ('state', 'action', 'target')
+    ('state', 'action', 'reward', 'next_states')
 )
 
 
@@ -173,9 +210,10 @@ class Episode(object):
 
         states = np.array([t[0] for t in self.transitions[:length]])
         actions = np.array([t[1] for t in self.transitions[:length]])
-        targets = np.array([t[2] for t in self.transitions[:length]])
+        rewards = np.array([t[2] for t in self.transitions[:length]])
+        next_states = np.array([t[3] for t in self.transitions[:length]])
 
-        return states, actions, targets
+        return states, actions, rewards, next_states
 
 
 class ReplayMemory(object):
