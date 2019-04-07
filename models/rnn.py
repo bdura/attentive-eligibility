@@ -110,7 +110,7 @@ class RNN(nn.Module):
 
 class AttentiveRNN(nn.Module):
 
-    def __init__(self, input_dimension=5, hidden_dimension=5, key_dimension=4,
+    def __init__(self, input_dimension=128, hidden_dimension=50, key_dimension=5,
                  n_actions=4, dropout=.1, horizon=-1):
         """
         Initialises the object.

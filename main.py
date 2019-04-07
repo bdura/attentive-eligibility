@@ -4,6 +4,8 @@ import gym
 
 from time import time
 
+import argparse
+
 from models import rnn
 from control import agents, environments
 
@@ -14,6 +16,11 @@ def main():
 
 
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--name', type=str, default='test')
+    parser.add_argument('--notify', action='store_true')
+    parser.add_argument('--config', type=str, default='config.json')
 
     t0 = time()
 

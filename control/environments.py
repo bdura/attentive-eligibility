@@ -8,7 +8,7 @@ from control.utils import Episode, ReplayMemory, Transition
 class Environment(BaseEnvironment):
 
     def __init__(self, environment, agent, temperature=1., gamma=1., alpha=.1,
-                 decay=.9, seed=None, verbose=False, max_steps=1000):
+                 decay=.9, seed=None, verbose=False, max_steps=1000, slack=None):
 
         super(Environment, self).__init__(verbose=verbose)
 
@@ -32,6 +32,12 @@ class Environment(BaseEnvironment):
         self.max_steps = max_steps
 
         self.replay_memory = ReplayMemory(capacity=10000)
+
+        self.slack = slack
+
+    def notify(self, text):
+        if self.slack is not None:
+            self.slack.send_message(text)
 
     def greedy(self, state):
         """

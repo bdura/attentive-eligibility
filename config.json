@@ -1,0 +1,24 @@
+{
+  "general": {
+    "name": "attentive-RNN",
+    "wall_time": 8
+  },
+  "model": {
+    "type": "AttentiveRNN",
+    "parameters": {
+      "input_dimension": 128,
+      "hidden_dimension": 50,
+      "key_dimension": 5,
+      "n_actions": 4,
+      "dropout": 0.1,
+      "horizon": 10,
+      "truncate": 20
+    }
+  },
+  "optimiser": {
+    "type": "Adam",
+    "parameters": {
+      "lr": 0.001
+    }
+  }
+}
