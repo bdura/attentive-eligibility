@@ -322,13 +322,14 @@ class Environment(BaseEnvironment):
 
         returns = []
 
-        for i in iterator:
+        with iterator as it:
+            for i in it:
 
-            self.agent.commit()
-            returns.append(self.exploration_segment(episodes))
+                self.agent.commit()
+                returns.append(self.exploration_segment(episodes))
 
-            for _ in range((i + 1) ** 2):
-                self.batch(50)
+                for _ in range((i + 1) ** 2):
+                    self.batch(50)
 
         return np.array(returns)
 
