@@ -120,6 +120,8 @@ class Environment(BaseEnvironment):
         # We store the new state and action
         self.state, self.action = s, a
 
+        d = d or i['ale.lives'] < 5
+
         return d, r
 
     def explore(self):
