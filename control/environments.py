@@ -290,12 +290,12 @@ class Environment(BaseEnvironment):
                 self.agent.commit()
                 returns.append(self.exploration_segment(episodes))
 
-                for _ in range(min(i + 1, 40)):
+                for _ in range(2 * len(self.replay_memory) // 100):
                     self.batch(100)
 
         return np.array(returns)
 
-    def run(self, epochs=10, segments=10, episodes=50, wall_time=None):
+    def run(self, epochs=10, segments=10, episodes=50, wall_time=10, save_directory=None):
 
         self.notify('Beginning training')
 
@@ -305,9 +305,12 @@ class Environment(BaseEnvironment):
 
             self.train(segments, episodes)
 
-            mean_return, steps = np.array([self.evaluation_episode() for _ in range(50)]).mean(axis=0)
+            mean_return, steps = np.array([self.evaluation_episode() for _ in range(200)]).mean(axis=0)
 
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
+
+            if save_directory is not None:
+                self.save(save_directory)
 
             now = (time.time() - t0) / 3600
 

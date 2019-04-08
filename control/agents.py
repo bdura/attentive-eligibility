@@ -222,3 +222,4 @@ class DQNAgent(BaseAgent):
         """Saves the model weights."""
 
         torch.save(self.model.cpu().state_dict(), '{}/state_dict.pth'.format(directory))
+        self.model = self.model.to(self.device)
