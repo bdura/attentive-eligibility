@@ -285,7 +285,7 @@ class Environment(BaseEnvironment):
         returns = []
 
         with iterator as it:
-            for i in it:
+            for _ in it:
 
                 self.agent.commit()
                 returns.append(self.exploration_segment(episodes))
@@ -308,6 +308,7 @@ class Environment(BaseEnvironment):
             mean_return, steps = np.array([self.evaluation_episode() for _ in range(200)]).mean(axis=0)
 
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
+            self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
 
             if save_directory is not None:
                 self.save(save_directory)
