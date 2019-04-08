@@ -175,6 +175,9 @@ class DQNAgent(BaseAgent):
             targets (np.array): The targets.
         """
 
+        # Resetting the fixed network.
+        self.fixed.reset()
+
         targets = []
 
         for reward, next_state in zip(rewards, next_states):
