@@ -41,7 +41,7 @@ class DQNAgent(BaseAgent):
         self.model = model.to(self.device)
         self.fixed = copy.deepcopy(self.model).eval()
 
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.SmoothL1Loss()
         self.optimiser = optimiser
 
         self.gamma = gamma
