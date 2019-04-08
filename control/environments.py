@@ -1,8 +1,14 @@
 import numpy as np
 import os
 
+import json
+
+import torch
+
 from control.utils import softmax, BaseEnvironment
 from control.utils import Episode, ReplayMemory, Transition
+
+import time
 
 
 class Environment(BaseEnvironment):
@@ -25,6 +31,15 @@ class Environment(BaseEnvironment):
         self.replay_memory = ReplayMemory(capacity=capacity)
 
         self.slack = slack
+
+    def get_config(self):
+
+        config = {
+            'verbose': self.verbose,
+            'max_steps': self.max_steps
+        }
+
+        return config
 
     def notify(self, text):
         if self.slack is not None:
@@ -280,23 +295,48 @@ class Environment(BaseEnvironment):
 
         return np.array(returns)
 
-    def run(self, epochs=10, segments=10, episodes=50):
+    def run(self, epochs=10, segments=10, episodes=50, wall_time=None):
 
         self.notify('Beginning training')
 
-        for _ in range(epochs):
+        t0 = time.time()
+
+        for i in range(epochs):
+
             self.train(segments, episodes)
 
             mean_return, steps = np.array([self.evaluation_episode() for _ in range(50)]).mean(axis=0)
 
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
 
+            now = (time.time() - t0) / 3600
+
+            if now / (i + 1) * (i + 2) > wall_time:
+                break
+
         self.notify('Training ended.')
 
     def save(self, directory):
 
         os.makedirs(directory, exist_ok=True)
+
+        config = dict()
+
+        config['types'] = {
+            'model': self.agent.model.name,
+            'agent': self.agent.name
+        }
+
+        config['agent'] = self.agent.get_config()
+        config['model'] = self.agent.model.get_config()
+        config['environment'] = self.get_config()
+
+        with open(os.path.join(directory, 'config.json'), 'w') as f:
+            json.dump(config, f, indent=4)
+
         self.agent.save(directory)
+
+        torch.save(self.replay_memory, os.path.join(directory, 'buffer.pth'))
 
 
 # if __name__ == '__main__':

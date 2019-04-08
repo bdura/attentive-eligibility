@@ -23,6 +23,8 @@ class DQNAgent(BaseAgent):
     A general class for value approximation by a neural network
     """
 
+    name = 'DQNAgent'
+
     def __init__(self, model, optimiser, gamma=.9, temperature=1, algorithm='expsarsa'):
         """
         Initialises the object.
@@ -44,6 +46,16 @@ class DQNAgent(BaseAgent):
 
         self.gamma = gamma
         self.algorithm = algorithm
+
+    def get_config(self):
+
+        config = {
+            'gamma': self.gamma,
+            'temperature': self.temperature,
+            'algorithm': self.algorithm,
+        }
+
+        return config
 
     def commit(self):
         """Commits the changes made to the model, by moving them over to the fixed model."""
@@ -206,4 +218,4 @@ class DQNAgent(BaseAgent):
     def save(self, directory):
         """Saves the model weights."""
 
-        torch.save(self.model.cpu().state_dict(), '{}/model_weights.pth'.format(directory))
+        torch.save(self.model.cpu().state_dict(), '{}/state_dict.pth'.format(directory))

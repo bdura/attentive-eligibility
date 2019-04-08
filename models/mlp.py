@@ -20,11 +20,14 @@ class MLP(nn.Module):
 
         super(MLP, self).__init__()
 
+        self.name = 'MLP'
+
         self.activation = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
 
         self.input_layer = nn.Linear(input_dimension, hidden_dimension)
 
+        self.n_hidden_layers = n_hidden_layers
         self.hidden = nn.Sequential(*[
             nn.Sequential(
                 self.dropout,
@@ -35,6 +38,18 @@ class MLP(nn.Module):
         ])
 
         self.action_layer = nn.Linear(hidden_dimension, n_actions)
+
+    def get_config(self):
+
+        config = {
+            'input_dimension': self.input_layer.in_features,
+            'hidden_dimension': self.input_layer.out_features,
+            'n_hidden_layers': self.n_hidden_layers,
+            'n_actions': self.action_layer.out_features,
+            'dropout': self.dropout.p,
+        }
+
+        return config
 
     def forward(self, x):
         """
