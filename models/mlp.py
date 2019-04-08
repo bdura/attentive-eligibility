@@ -32,6 +32,7 @@ class MLP(nn.Module):
             nn.Sequential(
                 self.dropout,
                 nn.Linear(hidden_dimension, hidden_dimension),
+                nn.BatchNorm1d(hidden_dimension),
                 self.activation,
             )
             for _ in range(n_hidden_layers)
