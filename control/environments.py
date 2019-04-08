@@ -290,8 +290,8 @@ class Environment(BaseEnvironment):
                 self.agent.commit()
                 returns.append(self.exploration_segment(episodes))
 
-                for _ in range(min(i + 1, 20)):
-                    self.batch(50)
+                for _ in range(min(i + 1, 40)):
+                    self.batch(100)
 
         return np.array(returns)
 
@@ -311,7 +311,7 @@ class Environment(BaseEnvironment):
 
             now = (time.time() - t0) / 3600
 
-            if now / (i + 1) * (i + 2) > wall_time:
+            if now / (i + 1) * (i + 2) > wall_time * .95:
                 break
 
         self.notify('Training ended.')
