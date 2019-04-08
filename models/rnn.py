@@ -213,6 +213,10 @@ class AttentiveRNN(nn.Module):
         if self.horizon > -1 and len(self.context) > self.horizon + 1:
             self.context.popleft()
 
+        self.contexts.append(x)
+        if len(self.contexts) > self.truncate:
+            self.contexts.popleft().detach()
+
         context = torch.stack(tuple(self.context))
 
         query = self.query(x)
