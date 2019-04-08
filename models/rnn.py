@@ -21,6 +21,8 @@ class RNN(nn.Module):
 
         super(RNN, self).__init__()
 
+        self.name = 'RNN'
+
         self.activation = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
 
@@ -36,6 +38,18 @@ class RNN(nn.Module):
         self.truncate = truncate
 
         self.action_layer = nn.Linear(hidden_dimension, n_actions)
+
+    def get_config(self):
+
+        config = {
+            'input_dimension': self.input_layer.in_features,
+            'hidden_dimension': self.input_layer.out_features,
+            'n_actions': self.action_layer.out_features,
+            'dropout': self.dropout.p,
+            'truncate': self.truncate,
+        }
+
+        return config
 
     def forward(self, x):
         """
@@ -110,8 +124,8 @@ class RNN(nn.Module):
 
 class AttentiveRNN(nn.Module):
 
-    def __init__(self, input_dimension=5, hidden_dimension=5, key_dimension=4,
-                 n_actions=4, dropout=.1, horizon=-1):
+    def __init__(self, input_dimension=128, hidden_dimension=50, key_dimension=5,
+                 n_actions=4, dropout=.1, horizon=-1, truncate=20):
         """
         Initialises the object.
 
@@ -125,6 +139,8 @@ class AttentiveRNN(nn.Module):
         """
 
         super(AttentiveRNN, self).__init__()
+
+        self.name = 'AttentiveRNN'
 
         self.activation = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
@@ -143,7 +159,24 @@ class AttentiveRNN(nn.Module):
         self.keys = deque()
         self.horizon = horizon
 
+        self.contexts = deque()
+        self.truncate = truncate
+
         self.action_layer = nn.Linear(hidden_dimension, n_actions)
+
+    def get_config(self):
+
+        config = {
+            'input_dimension': self.input_layer.in_features,
+            'hidden_dimension': self.input_layer.out_features,
+            'n_actions': self.action_layer.out_features,
+            'dropout': self.dropout.p,
+            'truncate': self.truncate,
+            'horizon': self.horizon,
+            'key_dimension': self.key.out_features,
+        }
+
+        return config
 
     def reset(self):
         """Resets the time-dependency of the model"""
@@ -179,6 +212,10 @@ class AttentiveRNN(nn.Module):
         self.context.append(x)
         if self.horizon > -1 and len(self.context) > self.horizon + 1:
             self.context.popleft()
+
+        self.contexts.append(x)
+        if len(self.contexts) > self.truncate:
+            self.contexts.popleft().detach()
 
         context = torch.stack(tuple(self.context))
 
@@ -255,13 +292,3 @@ class AttentiveRNN(nn.Module):
             actions = self.action_layer(weighted_context)
 
             return actions
-
-
-if __name__ == '__main__':
-
-    rnn = RNN()
-
-    tensor = torch.randn((2, 5))
-
-    rnn.reset()
-    rnn(tensor)
