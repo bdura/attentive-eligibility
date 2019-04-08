@@ -1,11 +1,14 @@
 import numpy as np
+import os
 
-from control.utils import softmax, BaseEnvironment
+from control.utils import softmax, BaseEnvironment, save_json
+from control.utils import Episode, ReplayMemory
 
 
 class Environment(BaseEnvironment):
 
-    def __init__(self, environment, agent, temperature=1, gamma=1, alpha=.1, decay=.9, seed=None, verbose=False):
+    def __init__(self, environment, agent, temperature=1, gamma=1, alpha=.1,
+                 decay=.9, seed=None, verbose=False, max_steps=1000):
 
         super(Environment, self).__init__(verbose=verbose)
 
@@ -25,6 +28,10 @@ class Environment(BaseEnvironment):
 
         self.state = None
         self.action = None
+
+        self.max_steps = max_steps
+
+        self.replay_memory = ReplayMemory(capacity=1000)
 
     def greedy(self, state):
         """
@@ -117,6 +124,11 @@ class Environment(BaseEnvironment):
 
         return d, r
 
+    def reset(self):
+        self.agent.reset()
+        self.state = self.environment.reset()
+        self.action = np.random.choice(self.greedy(self.state))
+
     def episode(self, evaluation=False):
         """
         Runs a full episode.
@@ -128,7 +140,7 @@ class Environment(BaseEnvironment):
             full_return (float): The full return obtained during the experiment.
         """
 
-        self.agent.reset()
+        self.reset()
 
         if evaluation:
             step = self.evaluate
@@ -140,8 +152,6 @@ class Environment(BaseEnvironment):
         done = False
         full_return = 0.
 
-        self.state = self.environment.reset()
-
         if evaluation:
             self.action = np.random.choice(self.greedy(self.state))
         else:
@@ -149,14 +159,12 @@ class Environment(BaseEnvironment):
             self.action = self.sample_action(p)
 
         counter = 0
-        while not done:
+        while not done and counter < self.max_steps:
             done, reward = step()
             full_return = self.gamma * full_return + reward
             counter += 1
 
-        self.print('Performed {} steps'.format(counter))
-
-        return full_return
+        return full_return, counter
 
     def segment(self, episodes=10):
         """
@@ -170,8 +178,10 @@ class Environment(BaseEnvironment):
             (float): The return obtained after the evaluation episode.
         """
 
-        training_return = np.mean([self.episode() for _ in range(episodes)])
-        testing_return = self.episode(evaluation=True)
+        self.agent.commit()
+
+        training_return = np.mean([self.episode()[0] for _ in range(episodes)])
+        testing_return = self.episode(evaluation=True)[0]
 
         return training_return, testing_return
 
@@ -193,6 +203,22 @@ class Environment(BaseEnvironment):
 
         return returns
 
+    def save(self, directory):
+
+        os.makedirs(directory, exist_ok=True)
+
+        config = {
+            'temperature': self.temperature,
+            'gamma': self.gamma,
+            'alpha': self.alpha,
+            'decay': self.decay,
+            'max_steps': self.max_steps,
+        }
+
+        save_json(config, directory, 'env_config.json')
+
+        self.agent.save(directory)
+
 
 class Sarsa(Environment):
 
@@ -206,7 +232,7 @@ class Sarsa(Environment):
 
         s, r, d, i = self.environment.step(self.action)
 
-        p = self.boltzmann(s)
+        p = self.epsilon_greedy(s, 1)
         a = self.sample_action(p)
 
         target = r + self.gamma * self.agent.q(s)[a]
@@ -233,6 +259,7 @@ class ExpectedSarsa(Environment):
         s, r, d, i = self.environment.step(self.action)
 
         p = self.boltzmann(s)
+        # p = self.epsilon_greedy(s, 1)
         a = self.sample_action(p)
 
         target = r + self.gamma * p @ self.agent.q(s)

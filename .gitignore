@@ -13,3 +13,4 @@ __pycache__/
 # Autoenv
 .autoenv.zsh
 .autoenv_leave.zsh
+/saved/

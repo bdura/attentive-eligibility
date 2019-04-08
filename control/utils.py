@@ -4,6 +4,10 @@ import numpy as np
 from tqdm import tqdm
 
 import gc
+import os
+import json
+
+from collections import namedtuple
 
 from functools import wraps
 
@@ -134,3 +138,48 @@ class BaseAgent(object):
     def reset(self):
         """Resets the agent"""
         pass
+
+
+def save_json(obj, directory, name):
+    path = os.path.join(directory, name)
+
+    with open(path, 'w') as f:
+        json.dump(obj, f, indent=2)
+
+
+Transition = namedtuple(
+    'Transition',
+    ('state', 'action', 'reward', 'next_state', 'next_action')
+)
+
+
+class Episode(object):
+
+    def __init__(self):
+
+        self.transitions = []
+
+    def push(self, state, action, reward, next_state, next_action):
+
+        self.transitions.append(Transition(state, action, reward, next_state, next_action))
+
+
+class ReplayMemory(object):
+
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.memory = []
+        self.position = 0
+
+    def push(self, episode):
+        """Saves a transition."""
+        if len(self.memory) < self.capacity:
+            self.memory.append(None)
+        self.memory[self.position] = episode
+        self.position = (self.position + 1) % self.capacity
+
+    def sample(self, batch_size):
+        return np.random.choice(self.memory, size=batch_size)
+
+    def __len__(self):
+        return len(self.memory)

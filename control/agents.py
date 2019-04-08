@@ -1,7 +1,11 @@
 import torch
 from torch import nn
 
+import numpy as np
+
 from control.utils import BaseAgent
+
+import copy
 
 
 class TabularAgent(BaseAgent):
@@ -31,24 +35,33 @@ class DQNAgent(BaseAgent):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.model = model.to(self.device)
+        self.fixed = copy.deepcopy(self.model).eval()
 
         self.criterion = nn.MSELoss()
         self.optimiser = optimiser
 
-    def state(self, state):
+    def commit(self):
+        self.fixed.load_state_dict(copy.deepcopy(self.model.state_dict()))
+
+    def tensorise(self, array):
         """
-        Returns the tensorised version of the state representation.
+        Returns the tensorised version of an array.
 
         Args:
-            state (np.array): The representation of the state.
+            array (np.array): A numpy array.
 
         Returns:
-            state (torch.Tensor): The tensorised version of the state representation.
+            tensor (torch.Tensor): The tensorised version of the array.
         """
 
-        state = torch.tensor(state, dtype=torch.float).to(self.device)
+        if array.dtype == np.int:
+            dtype = None
+        else:
+            dtype = torch.float
 
-        return state
+        tensor = torch.tensor(array, dtype=dtype).to(self.device)
+
+        return tensor
 
     def eval(self):
         self.model.eval()
@@ -67,17 +80,23 @@ class DQNAgent(BaseAgent):
             actions (np.array): The value for each possible action.
         """
 
-        state = self.state(state)
+        with torch.no_grad():
 
-        # Add a batch dimension
-        state = state.unsqueeze(0)
+            state = self.tensorise(state)
 
-        actions = self.model(state)
+            # Add a batch dimension
+            squeezed = len(state.size()) == 1
 
-        # Remove the batch dimension
-        actions = actions.squeeze()
+            if squeezed:
+                state = state.unsqueeze(0)
 
-        return actions.detach().numpy()
+            actions = self.fixed(state)
+
+            # Remove the batch dimension
+            if squeezed:
+                actions = actions.squeeze()
+
+            return actions.detach().cpu().numpy()
 
     def update(self, state, action, target):
         """
@@ -89,7 +108,7 @@ class DQNAgent(BaseAgent):
             target (float): The target (be it Sarsa, ExpSarsa or QLearning).
         """
 
-        state = self.state(state)
+        state = self.tensorise(state)
 
         # Add a batch dimension
         state = state.unsqueeze(0)
@@ -98,7 +117,7 @@ class DQNAgent(BaseAgent):
 
         q = actions.squeeze()[action]
 
-        loss = self.criterion(q, torch.tensor(target))
+        loss = self.criterion(q, self.tensorise(target))
         loss.backward(retain_graph=True)
 
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
@@ -106,7 +125,33 @@ class DQNAgent(BaseAgent):
 
         self.optimiser.step()
 
+    def multiple_updates(self, states, actions, targets):
+        """
+        Performs a gradient descent step on the model.
+
+        Args:
+            states (np.array): The representation for the state.
+            actions (np.array): The action taken.
+            targets (float): The target (be it Sarsa, ExpSarsa or QLearning).
+        """
+
+        states = self.tensorise(states)
+
+        q = torch.index_select(self.model(states), dim=0, index=self.tensorise(actions))
+
+        loss = self.criterion(q, self.tensorise(targets))
+        loss.backward(retain_graph=True)
+
+        self.optimiser.step()
+
     def reset(self):
         """Resets the model"""
 
         self.model.reset()
+        self.fixed.reset()
+
+        # self.commit()
+
+    def save(self, directory):
+
+        torch.save(self.model.cpu().state_dict(), '{}/model_weights.pth'.format(directory))
