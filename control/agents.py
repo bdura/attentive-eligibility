@@ -195,8 +195,7 @@ class DQNAgent(BaseAgent):
         """
 
         # Resetting the networks.
-        self.fixed.reset()
-        self.model.reset()
+        self.reset()
 
         targets = self.targets(rewards, next_states)
 
