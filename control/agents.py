@@ -25,7 +25,7 @@ class DQNAgent(BaseAgent):
 
     name = 'DQNAgent'
 
-    def __init__(self, model, optimiser, gamma=.9, temperature=1, algorithm='expsarsa'):
+    def __init__(self, model, optimiser, gamma=.9, temperature=1, algorithm='expsarsa', n_actions=4):
         """
         Initialises the object.
 
@@ -34,7 +34,7 @@ class DQNAgent(BaseAgent):
             optimiser (torch.optim.Optimizer): An optimizer.
         """
 
-        super(DQNAgent, self).__init__(temperature=temperature)
+        super(DQNAgent, self).__init__(temperature=temperature, n_actions=n_actions)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

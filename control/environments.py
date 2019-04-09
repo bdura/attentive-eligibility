@@ -135,7 +135,10 @@ class Environment(BaseEnvironment):
         # We store the new state and action
         self.state, self.action = s, a
 
-        d = d or i['ale.lives'] < 5
+        try:
+            d = d or i['ale.lives'] < 5
+        except KeyError:
+            pass
 
         return d, r
 
@@ -158,7 +161,10 @@ class Environment(BaseEnvironment):
         # We store the new state and action
         self.state, self.action = s, a
 
-        d = d or i['ale.lives'] < 5
+        try:
+            d = d or i['ale.lives'] < 5
+        except KeyError:
+            pass
 
         return d, r, transition
 

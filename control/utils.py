@@ -108,9 +108,9 @@ class BaseEnvironment:
 
 class BaseAgent(object):
 
-    def __init__(self, temperature=1):
+    def __init__(self, temperature, n_actions):
         self.temperature = temperature
-        self.n_actions = 4
+        self.n_actions = n_actions
 
     def q(self, state):
         """
