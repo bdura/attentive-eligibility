@@ -79,7 +79,7 @@ class RNN(nn.Module):
 
         self.contexts.append(x)
         if len(self.contexts) > self.truncate:
-            self.contexts.popleft().detach()
+            self.contexts.popleft().detach_()
 
         x = self.dropout(x)
 
@@ -215,7 +215,7 @@ class AttentiveRNN(nn.Module):
 
         self.contexts.append(x)
         if len(self.contexts) > self.truncate:
-            self.contexts.popleft().detach()
+            self.contexts.popleft().requires_grad_(False)
 
         context = torch.stack(tuple(self.context))
 

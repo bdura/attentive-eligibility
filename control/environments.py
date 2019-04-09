@@ -309,7 +309,10 @@ class Environment(BaseEnvironment):
 
         for i in range(epochs):
 
-            self.train(segments, episodes)
+            returns = self.train(segments, episodes).mean(axis=0)[0]
+
+            self.notify('>> Training return : {:.2f}'.format(returns))
+            self.print('>> Training return : {:.2f}'.format(returns))
 
             mean_return, steps = np.array([self.evaluation_episode() for _ in range(200)]).mean(axis=0)
 
