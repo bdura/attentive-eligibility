@@ -25,7 +25,8 @@ class DQNAgent(BaseAgent):
 
     name = 'DQNAgent'
 
-    def __init__(self, model, optimiser, gamma=.9, temperature=1, algorithm='expsarsa', n_actions=4):
+    def __init__(self, model, optimiser, gamma=.9, temperature=1, algorithm='expsarsa', n_actions=4,
+                 use_eligibility=False):
         """
         Initialises the object.
 
@@ -46,6 +47,7 @@ class DQNAgent(BaseAgent):
 
         self.gamma = gamma
         self.algorithm = algorithm
+        self.use_eligibility = use_eligibility
 
     def get_config(self):
 
@@ -143,7 +145,10 @@ class DQNAgent(BaseAgent):
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
         torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
 
-        self.optimiser.step()
+        if self.use_eligibility:
+            self.optimiser.step(loss)
+        else:
+            self.optimiser.step()
 
     def target(self, reward, next_state):
         q = self.q(next_state)
@@ -178,7 +183,6 @@ class DQNAgent(BaseAgent):
         targets = []
 
         for reward, next_state in zip(rewards, next_states):
-
             targets.append(self.target(reward, next_state))
 
         return np.stack(targets)
@@ -200,7 +204,6 @@ class DQNAgent(BaseAgent):
         targets = self.targets(rewards, next_states)
 
         for state, action, target in zip(states, actions, targets):
-
             state = self.tensorise(state)
 
             q = torch.gather(self.model(state), dim=1, index=self.tensorise(action).unsqueeze(1))
@@ -211,7 +214,10 @@ class DQNAgent(BaseAgent):
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
             torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
 
-            self.optimiser.step()
+            if self.use_eligibility:
+                self.optimiser.step(loss)
+            else:
+                self.optimiser.step()
 
     def reset(self):
         """Resets the model."""
