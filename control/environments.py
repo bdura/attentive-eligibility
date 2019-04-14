@@ -117,11 +117,17 @@ class Environment(BaseEnvironment):
         """
 
         action = np.random.choice(self.agent.n_actions, p=p)
+
         return action
 
     def step(self, action):
 
         s, r, d, i = self.environment.step(action)
+
+        try:
+            d = d or i['ale.lives'] < 5
+        except KeyError:
+            pass
 
         return s, r, d, i
 
@@ -169,15 +175,23 @@ class Environment(BaseEnvironment):
         self.state = self.environment.reset()
         self.action = 1
 
-    def evaluation_episode(self):
+    def evaluation_episode(self, render=False):
         """
-        Runs a full episode.
+        Runs a full evaluation episode.
+
+        Args:
+            render (bool): Whether to display the render of the episode.
 
         Returns:
             full_return (float): The full return obtained during the experiment.
+            counter (int): The number of timesteps.
         """
 
         self.reset()
+
+        if render:
+            self.environment.render()
+            time.sleep(0.01)
 
         step = self.evaluate
         self.agent.eval()
@@ -191,13 +205,34 @@ class Environment(BaseEnvironment):
             full_return = self.agent.gamma * full_return + reward
             counter += 1
 
+            if render:
+                self.environment.render()
+                time.sleep(0.01)
+
+        if render:
+            self.environment.close()
+
         return full_return, counter
 
-    def exploration_episode(self):
+    def exploration_episode(self, render=False):
+        """
+        Runs a full exploration episode.
+
+        Args:
+            render (bool): Whether to display the render of the episode.
+
+        Returns:
+            full_return (float): The full return obtained during the experiment.
+            counter (int): The number of timesteps.
+        """
 
         episode = Episode()
 
         self.reset()
+
+        if render:
+            self.environment.render()
+            time.sleep(0.01)
 
         done = False
         full_return = 0.
@@ -210,7 +245,14 @@ class Environment(BaseEnvironment):
             full_return = self.agent.gamma * full_return + reward
             counter += 1
 
+            if render:
+                self.environment.render()
+                time.sleep(0.01)
+
         self.replay_memory.push(episode)
+
+        if render:
+            self.environment.close()
 
         return full_return, counter
 
