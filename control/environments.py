@@ -119,6 +119,12 @@ class Environment(BaseEnvironment):
         action = np.random.choice(self.agent.n_actions, p=p)
         return action
 
+    def step(self, action):
+
+        s, r, d, i = self.environment.step(action)
+
+        return s, r, d, i
+
     def evaluate(self):
         """
         Performs a single evaluation/greedy step (no training).
@@ -127,18 +133,13 @@ class Environment(BaseEnvironment):
             d (bool): Whether we've reached the end of the episode.
         """
 
-        s, r, d, i = self.environment.step(self.action)
+        s, r, d, i = self.step(self.action)
 
         # If there are ties, we might want to choose between actions at random
         a = np.random.choice(self.greedy(s))
 
         # We store the new state and action
         self.state, self.action = s, a
-
-        try:
-            d = d or i['ale.lives'] < 5
-        except KeyError:
-            pass
 
         return d, r
 
@@ -150,7 +151,7 @@ class Environment(BaseEnvironment):
             d (bool): Whether we've reached the end of the episode.
         """
 
-        s, r, d, i = self.environment.step(self.action)
+        s, r, d, i = self.step(self.action)
 
         # If there are ties, we might want to choose between actions at random
         p, q = self.boltzmann(s, return_q=True)
@@ -160,11 +161,6 @@ class Environment(BaseEnvironment):
 
         # We store the new state and action
         self.state, self.action = s, a
-
-        try:
-            d = d or i['ale.lives'] < 5
-        except KeyError:
-            pass
 
         return d, r, transition
 
@@ -208,7 +204,6 @@ class Environment(BaseEnvironment):
 
         counter = 0
         while not done and counter < self.max_steps:
-
             done, reward, transition = self.explore()
             episode.push(transition)
 
@@ -352,27 +347,44 @@ class Environment(BaseEnvironment):
         torch.save(self.replay_memory, os.path.join(directory, 'buffer.pth'))
 
 
-# if __name__ == '__main__':
-#     import models.mlp as mlps
-#     import control.agents as agents
-#
-#     import torch
-#     import gym
-#
-#     model = mlps.MLP()
-#     optimiser = torch.optim.Adam(model.parameters(), lr=.001)
-#
-#     agent = agents.DQNAgent(model, optimiser)
-#
-#     environment = ExpectedSarsa(
-#         environment=gym.make('Breakout-ram-v0'),
-#         agent=agent,
-#         gamma=.999,
-#         temperature=10,
-#         verbose=True,
-#         max_steps=1000
-#     )
-#
-#     environment.exploration_segment(1)
-#
-#     environment.batch(batch_size=2)
+class SimplifiedEnvironment(Environment):
+    """A simplified environment with only 3 actions."""
+
+    def step(self, action):
+        if action > 0:
+            action += 1
+
+        s, r, d, i = self.environment.step(action)
+
+        try:
+            d = d or i['ale.lives'] < 5
+        except KeyError:
+            pass
+
+        return s, r, d, i
+
+    def reset(self):
+        super().reset()
+
+        s, r, d, i = self.environment.step(1)
+        self.state = s
+
+
+class OverSimplifiedEnvironment(SimplifiedEnvironment):
+    """An over simplified environment with only 3 actions and 15 features."""
+
+    features = np.array([
+        57, 70, 71, 72, 74, 75, 86, 90, 94, 95, 99, 101, 103, 105, 119
+    ])
+
+    def reset(self):
+        super().reset()
+        self.state = self.state[self.features]
+
+    def step(self, action):
+
+        s, r, d, i = super().step(action)
+
+        s = s[self.features]
+
+        return s, r, d, i
