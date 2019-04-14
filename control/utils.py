@@ -30,7 +30,7 @@ def softmax(x):
 
     z = x - x.max(axis=axis, keepdims=True)
 
-    return np.exp(z)/np.exp(z).sum(axis=axis, keepdims=True)
+    return np.exp(z) / np.exp(z).sum(axis=axis, keepdims=True)
 
 
 def description(desc):
@@ -45,10 +45,8 @@ def description(desc):
     """
 
     def decorator(func):
-
         @wraps(func)
         def f(*args, **kwargs):
-
             self = args[0]
             self.print('>> ' + desc + '... ', end='')
             t = time()
@@ -65,7 +63,6 @@ def description(desc):
 
 
 def memory(func):
-
     @wraps(func)
     def f(*args, **kwargs):
         res = func(*args, **kwargs)
@@ -76,7 +73,6 @@ def memory(func):
 
 
 def delete(func):
-
     @wraps(func)
     def f(*args, **kwargs):
         self = args[0]
@@ -89,6 +85,40 @@ def delete(func):
         return res
 
     return f
+
+
+def tiling(value, min_value, max_value, n_tilings, n_bins):
+    """
+    Compute the tiling of a single value.
+
+    Args:
+        value: float, value responsible for the tiling.
+        min_value: float, minimal possible value of value.
+        max_value: float, maximal possible value of value.
+        n_tilings: int, number of tilings to compute.
+        n_bins: int, number of bins to compute.
+
+    Returns:
+        tiling: np-array, corresponding tiling as a n_tiling by n_bins matrix.
+    """
+
+    tiling = np.zeros((n_tilings, n_bins))
+
+    interval = (max_value - min_value) / (n_bins + 1)
+    offset = 0.
+
+    for i_tiling in range(n_tilings):
+        min_tiling = min_value + offset
+        max_tiling = max_value - (interval - offset)
+
+        index = int((value - min_tiling) * n_bins // (max_tiling - min_tiling))
+
+        if (0 <= index) and (index < n_bins):
+            tiling[i_tiling, index] = 1
+
+        offset += interval / (n_tilings - 1)
+
+    return tiling
 
 
 class BaseEnvironment:
@@ -108,9 +138,12 @@ class BaseEnvironment:
 
 class BaseAgent(object):
 
-    def __init__(self, temperature, n_actions):
+    def __init__(self, temperature, n_actions, gamma, algorithm, use_eligibility):
         self.temperature = temperature
         self.n_actions = n_actions
+        self.gamma = gamma
+        self.algorithm = algorithm
+        self.use_eligibility = use_eligibility
 
     def q(self, state):
         """
@@ -149,13 +182,11 @@ class BaseAgent(object):
         pass
 
     def greedy(self, q):
-
         best_as = np.arange(self.n_actions)[q == q.max()]
 
         return best_as
 
     def epsilon_greedy(self, state, epsilon=.1):
-
         assert 0 <= epsilon <= 1
 
         best_as = self.greedy(state)
@@ -166,13 +197,11 @@ class BaseAgent(object):
         return p
 
     def boltzmann(self, q):
-
         p = softmax(q / self.temperature)
 
         return p
 
     def sample_action(self, p):
-
         action = np.random.choice(self.n_actions, p=p)
         return action
 
@@ -193,18 +222,15 @@ Transition = namedtuple(
 class Episode(object):
 
     def __init__(self):
-
         self.transitions = []
 
     def push(self, transition):
-
         self.transitions.append(transition)
 
     def __len__(self):
         return len(self.transitions)
 
     def output(self, length=None):
-
         if length is None:
             length = len(self) + 1
 
@@ -235,3 +261,10 @@ class ReplayMemory(object):
 
     def __len__(self):
         return len(self.memory)
+
+
+if __name__ == '__main__':
+    # Test the tiling
+    for i in range(11):
+        print(tiling(i * 256 / 10, 0, 256, 4, 10))
+        print()

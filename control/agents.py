@@ -3,7 +3,7 @@ from torch import nn
 
 import numpy as np
 
-from control.utils import BaseAgent
+from control.utils import BaseAgent, tiling
 
 import copy
 
@@ -11,11 +11,251 @@ import copy
 class TabularAgent(BaseAgent):
     """
     A simple agent that uses tabular methods to compute the optimal policy.
-
-    Todo:
-        Implement it.
     """
-    pass
+
+    name = 'TabularAgent'
+
+    def __init__(self, model, optimiser, gamma=.9, temperature=1, algorithm='sarsa', n_actions=4, use_eligibility=False,
+                 ram_dim=128, min_ram=0, max_ram=256, n_bins=10, n_tilings=1):
+
+        super(TabularAgent, self).__init__(temperature=temperature, n_actions=n_actions, gamma=gamma,
+                                           algorithm=algorithm, use_eligibility=use_eligibility)
+
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        self.model = model.to(self.device)
+        self.fixed = copy.deepcopy(self.model).eval()
+
+        self.criterion = nn.SmoothL1Loss()
+        self.optimiser = optimiser
+
+        self.n_bins = n_bins
+        self.n_tilings = n_tilings
+
+        self.ram_dim = ram_dim
+        self.min_ram = min_ram
+        self.max_ram = max_ram
+
+    def get_config(self):
+
+        config = {
+            'gamma': self.gamma,
+            'temperature': self.temperature,
+            'algorithm': self.algorithm,
+            'use_eligibility': self.use_eligibility,
+            'n_bins': self.n_bins,
+            'n_tilings': self.n_tilings,
+        }
+
+        return config
+
+    def commit(self):
+        """Commits the changes made to the model, by moving them over to the fixed model."""
+        self.fixed.load_state_dict(copy.deepcopy(self.model.state_dict()))
+
+    def features(self, state):
+        """
+        Compute the features (tile coding) of the state.
+
+        Args:
+            state: np-array, state of the environment.
+
+        Returns:
+            array (np.array): The tilings representation of the state.
+        """
+
+        features = np.zeros((len(state), self.n_tilings, self.n_bins))
+
+        for i_ram in range(len(state)):
+            features[i_ram, :, :] = tiling(value=state[i_ram], min_value=self.min_ram, max_value=self.max_ram,
+                                           n_tilings=self.n_tilings, n_bins=self.n_bins)
+
+        return np.ravel(features, order='F')
+
+    def tensorise(self, state):
+        """
+        Returns the tensorised version of the features of a state.
+
+        Args:
+            array (np.array): A state.
+
+        Returns:
+            tensor (torch.Tensor): The tensorised version of the features of the state.
+        """
+
+        state = self.features(state)
+
+        if state.dtype == np.int:
+            dtype = None
+        else:
+            dtype = torch.float
+
+        tensor = torch.tensor(state, dtype=dtype).to(self.device)
+
+        return tensor
+
+    def eval(self):
+        """Puts the model in evaluation mode."""
+        self.model.eval()
+
+    def train(self):
+        """Puts the model in training mode."""
+        self.model.train()
+
+    def q(self, state):
+        """
+        Returns the current approximation for the action-value function.
+
+        Args:
+            state (np.array): The representation of a state.
+
+        Returns:
+            actions (np.array): The value for each possible action.
+        """
+
+        with torch.no_grad():
+
+            state = self.tensorise(state)
+
+            # Add a batch dimension
+            squeezed = len(state.size()) == 1
+
+            if squeezed:
+                state = state.unsqueeze(0)
+
+            actions = self.fixed(state)
+
+            # Remove the batch dimension
+            if squeezed:
+                actions = actions.squeeze()
+
+            return actions.detach().cpu().numpy()
+
+
+    '''
+    def update(self, state=None, action=None, target=None, alpha=None, delta=None, q=None, q_old=None, z=None, x=None,
+               method=None):
+        if method == 'semi-gradient':
+            self.w = self.w + alpha * delta * self.features(state, action)
+        elif state is not None:
+            self.w = self.w + alpha * (target - self.q(state)[action])
+
+        else:
+            self.w = self.w + alpha * (delta + q - q_old) * z - alpha * (q - q_old) * x
+    '''
+
+    def update(self, state, action, target):
+        """
+        Performs a gradient descent step on the model.
+
+        Args:
+            state (np.array): The representation for the state.
+            action (int): The action taken.
+            target (float): The target (be it Sarsa, ExpSarsa or QLearning).
+        """
+
+        state = self.tensorise(state)
+
+        # Add a batch dimension
+        state = state.unsqueeze(0)
+
+        actions = self.model(state)
+
+        q = actions.squeeze()[action]
+
+        loss = self.criterion(q, self.tensorise(target))
+        loss.backward(retain_graph=True)
+
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
+
+        if self.use_eligibility:
+            self.optimiser.step(loss)
+        else:
+            self.optimiser.step()
+
+    def target(self, reward, next_state):
+        q = self.q(next_state)
+
+        probability = self.boltzmann(q)
+
+        if self.algorithm == 'sarsa':
+            action = self.sample_action(probability)
+            target = reward + self.gamma * q[action]
+        elif self.algorithm == 'expsarsa':
+            target = reward + self.gamma * probability @ q.T
+        else:
+            target = reward + self.gamma * q.max(axis=1)
+
+        return target
+
+    def targets(self, rewards, next_states):
+        """
+        Computes the targets corresponding to a tuple (reward, next_state).
+
+        ..math::
+            \mathrm{target} = r + \gamma \times \hat{q}(s', a')
+
+        Args:
+            rewards (np.array): The rewards.
+            next_states (np.array): Next states.
+
+        Returns:
+            targets (np.array): The targets.
+        """
+
+        targets = []
+
+        for reward, next_state in zip(rewards, next_states):
+            targets.append(self.target(reward, next_state))
+
+        return np.stack(targets)
+
+    def batch_update(self, states, actions, rewards, next_states):
+        """
+        Performs a gradient descent step on the model.
+
+        Args:
+            states (np.array): The representation for the state.
+            actions (np.array): The action taken.
+            rewards (np.array): The reward.
+            next_states (np.array): The representation for the next state.
+        """
+
+        # Resetting the networks.
+        self.reset()
+
+        targets = self.targets(rewards, next_states)
+
+        for state, action, target in zip(states, actions, targets):
+            state = self.tensorise(state)
+
+            q = torch.gather(self.model(state), dim=1, index=self.tensorise(action).unsqueeze(1))
+
+            loss = self.criterion(q, self.tensorise(target))
+            loss.backward(retain_graph=True)
+
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
+
+            if self.use_eligibility:
+                self.optimiser.step(loss)
+            else:
+                self.optimiser.step()
+
+    def reset(self):
+        """Resets the model."""
+
+        self.model.reset()
+        self.fixed.reset()
+
+        # self.commit()
+
+    def save(self, directory):
+        """Saves the model weights."""
+
+        torch.save(self.model.cpu().state_dict(), '{}/state_dict.pth'.format(directory))
+        self.model = self.model.to(self.device)
 
 
 class DQNAgent(BaseAgent):
@@ -35,7 +275,8 @@ class DQNAgent(BaseAgent):
             optimiser (torch.optim.Optimizer): An optimizer.
         """
 
-        super(DQNAgent, self).__init__(temperature=temperature, n_actions=n_actions)
+        super(DQNAgent, self).__init__(temperature=temperature, n_actions=n_actions, gamma=gamma, algorithm=algorithm,
+                                       use_eligibility=use_eligibility)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -45,16 +286,13 @@ class DQNAgent(BaseAgent):
         self.criterion = nn.SmoothL1Loss()
         self.optimiser = optimiser
 
-        self.gamma = gamma
-        self.algorithm = algorithm
-        self.use_eligibility = use_eligibility
-
     def get_config(self):
 
         config = {
             'gamma': self.gamma,
             'temperature': self.temperature,
             'algorithm': self.algorithm,
+            'use_eligibility': self.use_eligibility
         }
 
         return config
@@ -166,7 +404,7 @@ class DQNAgent(BaseAgent):
         return target
 
     def targets(self, rewards, next_states):
-        r"""
+        """
         Computes the targets corresponding to a tuple (reward, next_state).
 
         ..math::
@@ -232,3 +470,96 @@ class DQNAgent(BaseAgent):
 
         torch.save(self.model.cpu().state_dict(), '{}/state_dict.pth'.format(directory))
         self.model = self.model.to(self.device)
+
+
+'''
+class Sarsa(Environment):
+
+    def backup(self):
+        """
+        Performs a single Sarsa backup (state-action -> reward -> state-action).
+
+        Returns:
+            d (bool): Whether we've reached the end of the episode.
+        """
+
+        s, r, d, i = self.environment.step(self.action)
+
+        p = self.epsilon_greedy(s, 1)
+        a = self.sample_action(p)
+
+        target = r + self.gamma * self.agent.q(s)[a]
+
+        # Regular Sarsa is an on-policy method
+        self.agent.update(state=self.state, action=self.action, target=target)
+
+        # We store the new state and action
+        self.state, self.action = s, a
+
+        return d, r
+
+class SarsaLambda(Environment):
+
+    def backup(self):
+        """
+        Performs a single Sarsa with eligibility traces backup (state-action -> reward -> state-action).
+
+        Returns:
+            d (bool): Whether we've reached the end of the episode.
+        """
+
+        x = self.agent.features(self.state, self.action)
+
+        s, r, d, i = self.environment.step(self.action)
+
+        p = self.epsilon_greedy(s, 1)
+        a = self.sample_action(p)
+
+        q = self.agent.q(self.state)[self.action]
+        q_new = self.agent.q(s)[a]
+        # print("q, q_new: {}, {}".format(q, q_new))
+
+        delta = r - self.average_reward + self.gamma * q_new - q
+        # print("delta: {}".format(delta))
+
+        self.average_reward = self.average_reward + self.beta * delta
+
+        self.z = self.gamma * self.decay * self.z + (1 - self.alpha * self.gamma * self.decay * np.dot(self.z, x)) * x
+        # print("z: {}, {}".format(min(self.z), max(self.z)))
+
+        self.agent.update(alpha=self.alpha, delta=delta, q=q, q_old=self.q_old, z=self.z, x=x)
+
+        # We store the new state and action
+        self.state, self.action = s, a
+        self.q_old = q_new
+
+        return d, r
+
+
+class SemiGradientSarsa(Environment):
+
+    def backup(self):
+        """
+        Performs a single Sarsa backup (state-action -> reward -> state-action).
+
+        Returns:
+            d (bool): Whether we've reached the end of the episode.
+        """
+
+        s, r, d, i = self.environment.step(self.action)
+
+        p = self.epsilon_greedy(s, 1)
+        a = self.sample_action(p)
+
+        delta = r - self.average_reward + self.agent.q(s)[a] - self.agent.q(self.state)[self.action]
+
+        self.average_reward = self.average_reward + self.beta * delta
+
+        # Regular Sarsa is an on-policy method
+        self.agent.update(state=self.state, action=self.action, delta=delta, alpha=self.alpha, method='semi-gradient')
+
+        # We store the new state and action
+        self.state, self.action = s, a
+
+        return d, r
+'''
