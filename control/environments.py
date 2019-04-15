@@ -5,7 +5,7 @@ import json
 
 import torch
 
-from control.utils import softmax, BaseEnvironment
+from control.utils import softmax, tiling, BaseEnvironment
 from control.utils import Episode, ReplayMemory, Transition
 
 import time
@@ -13,8 +13,8 @@ import time
 
 class Environment(BaseEnvironment):
 
-    def __init__(self, environment, agent, seed=None, verbose=False,
-                 max_steps=1000, slack=None, capacity=10000):
+    def __init__(self, environment, agent, tiling=False, seed=None, verbose=False,
+                 max_steps=1000, slack=None, capacity=10000, n_tilings=1, n_bins=10, min_ram=0, max_ram=256):
 
         super(Environment, self).__init__(verbose=verbose)
 
@@ -31,6 +31,14 @@ class Environment(BaseEnvironment):
         self.replay_memory = ReplayMemory(capacity=capacity)
 
         self.slack = slack
+
+        self.tiling = tiling
+
+        self.n_tiling = n_tilings
+        self.n_bins = n_bins
+
+        self.min_ram = min_ram
+        self.max_ram = max_ram
 
     def get_config(self):
 
@@ -124,6 +132,8 @@ class Environment(BaseEnvironment):
 
         s, r, d, i = self.environment.step(action)
 
+        s = self.state_representation(s)
+
         try:
             d = d or i['ale.lives'] < 5
         except KeyError:
@@ -172,7 +182,7 @@ class Environment(BaseEnvironment):
 
     def reset(self):
         self.agent.reset()
-        self.state = self.environment.reset()
+        self.state = self.state_representation(self.environment.reset())
         self.action = 1
 
     def evaluation_episode(self, render=False):
@@ -388,6 +398,21 @@ class Environment(BaseEnvironment):
 
         torch.save(self.replay_memory, os.path.join(directory, 'buffer.pth'))
 
+    def state_representation(self, state):
+
+        if self.tiling:
+
+            tilings = np.zeros((len(state), self.n_tilings, self.n_bins))
+
+            for i in range(len(state)):
+                tilings[i, :, :] = tiling(value=state[i], min_value=self.min_ram, max_value=self.max_ram,
+                                          n_tilings=self.n_tilings, n_bins=self.n_bins)
+
+            return np.ravel(tilings, order='F')
+
+        else:
+            return state
+
 
 class SimplifiedEnvironment(Environment):
     """A simplified environment with only 3 actions."""
@@ -397,6 +422,8 @@ class SimplifiedEnvironment(Environment):
             action += 1
 
         s, r, d, i = self.environment.step(action)
+
+        s = self.state_representation(s)
 
         try:
             d = d or i['ale.lives'] < 5
@@ -409,7 +436,8 @@ class SimplifiedEnvironment(Environment):
         super().reset()
 
         s, r, d, i = self.environment.step(1)
-        self.state = s
+
+        self.state = self.state_representation(s)
 
 
 class OverSimplifiedEnvironment(SimplifiedEnvironment):
@@ -421,12 +449,12 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
 
     def reset(self):
         super().reset()
-        self.state = self.state[self.features]
+        self.state = self.state_representation(self.state[self.features])
 
     def step(self, action):
 
         s, r, d, i = super().step(action)
 
-        s = s[self.features]
+        s = self.state_representation(s[self.features])
 
         return s, r, d, i
