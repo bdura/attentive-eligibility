@@ -5,7 +5,7 @@ import json
 
 import torch
 
-from control.utils import softmax, tiling, BaseEnvironment
+from control.utils import softmax, tiling, one_hot_encoding, BaseEnvironment
 from control.utils import Episode, ReplayMemory, Transition
 
 import time
@@ -13,8 +13,9 @@ import time
 
 class Environment(BaseEnvironment):
 
-    def __init__(self, environment, agent, tiling=False, seed=None, verbose=False,
-                 max_steps=1000, slack=None, capacity=10000, n_tilings=1, n_bins=10, min_ram=0, max_ram=256):
+    def __init__(self, environment, agent, seed=None, verbose=False, max_steps=1000, slack=None, capacity=10000,
+                 representation_method='vector', n_tilings=1, n_bins=10):
+        """ Initializes the environment. """
 
         super(Environment, self).__init__(verbose=verbose)
 
@@ -26,30 +27,44 @@ class Environment(BaseEnvironment):
         self.state = None
         self.action = None
 
+        self.n_actions = 4
+
         self.max_steps = max_steps
 
         self.replay_memory = ReplayMemory(capacity=capacity)
 
         self.slack = slack
 
-        self.tiling = tiling
+        self.representation_method = representation_method
 
-        self.n_tiling = n_tilings
+        self.n_tilings = n_tilings
         self.n_bins = n_bins
 
-        self.min_ram = min_ram
-        self.max_ram = max_ram
+        self.ram_dim = 128
+        self.min_ram = 0
+        self.max_ram = 256
 
     def get_config(self):
+        """
+        Compute the configuration of the environment as a dictionary.
+
+        Returns:
+            config: dict, configuration of the environment.
+        """
 
         config = {
             'verbose': self.verbose,
-            'max_steps': self.max_steps
+            'max_steps': self.max_steps,
+            'representation_method': self.representation_method,
+            'n_tilings': self.n_tilings,
+            'n_bins': self.n_bins
         }
 
         return config
 
     def notify(self, text):
+        """ Slack notification function. """
+
         if self.slack is not None:
             self.slack.send_message(text)
 
@@ -129,6 +144,18 @@ class Environment(BaseEnvironment):
         return action
 
     def step(self, action):
+        """
+        Performs a step of self.environment.
+
+        Args:
+            action: int, action to perform during the step.
+
+        Returns:
+            s: np.array, state following the step.
+            r: float, reward observed.
+            d: bool, whether the episode is done.
+            i: dict, info of the environment after the step.
+        """
 
         s, r, d, i = self.environment.step(action)
 
@@ -181,23 +208,32 @@ class Environment(BaseEnvironment):
         return d, r, transition
 
     def reset(self):
+        """ Reset the agent, the environment, and defines the first step as fire. """
+
         self.agent.reset()
         self.state = self.state_representation(self.environment.reset())
         self.action = 1
 
-    def evaluation_episode(self, render=False):
+    def evaluation_episode(self, render=False, return_observations=False):
         """
         Runs a full evaluation episode.
 
         Args:
             render (bool): Whether to display the render of the episode.
+            return_observations (bool): Whether to return the (full) observation of the states.
 
         Returns:
             full_return (float): The full return obtained during the experiment.
             counter (int): The number of timesteps.
+            observations (list): full observations of the states.
         """
 
+        observations = []
+
         self.reset()
+
+        if return_observations:
+            observations.append(self.environment.unwrapped._get_obs())
 
         if render:
             self.environment.render()
@@ -219,26 +255,39 @@ class Environment(BaseEnvironment):
                 self.environment.render()
                 time.sleep(0.01)
 
+            if return_observations:
+                observations.append(self.environment.unwrapped._get_obs())
+
         if render:
             self.environment.close()
 
-        return full_return, counter
+        if not return_observations:
+            return full_return, counter
 
-    def exploration_episode(self, render=False):
+        else:
+            return full_return, counter, observations
+
+    def exploration_episode(self, render=False, return_observations=False):
         """
         Runs a full exploration episode.
 
         Args:
             render (bool): Whether to display the render of the episode.
+            return_observations (bool): Whether to return the (full) observation of the states.
 
         Returns:
             full_return (float): The full return obtained during the experiment.
             counter (int): The number of timesteps.
+            observations (list): full observations of the states.
         """
 
+        observations = []
         episode = Episode()
 
         self.reset()
+
+        if return_observations:
+            observations.append(self.environment.unwrapped._get_obs())
 
         if render:
             self.environment.render()
@@ -250,6 +299,7 @@ class Environment(BaseEnvironment):
         counter = 0
         while not done and counter < self.max_steps:
             done, reward, transition = self.explore()
+
             episode.push(transition)
 
             full_return = self.agent.gamma * full_return + reward
@@ -259,12 +309,19 @@ class Environment(BaseEnvironment):
                 self.environment.render()
                 time.sleep(0.01)
 
+            if return_observations:
+                observations.append(self.environment.unwrapped._get_obs())
+
         self.replay_memory.push(episode)
 
         if render:
             self.environment.close()
 
-        return full_return, counter
+        if not return_observations:
+            return full_return, counter
+
+        else:
+            return full_return, counter, observations
 
     def exploration_segment(self, episodes=100):
         """
@@ -349,6 +406,16 @@ class Environment(BaseEnvironment):
         return np.array(returns)
 
     def run(self, epochs=10, segments=10, episodes=50, wall_time=10, save_directory=None):
+        """
+        Run a full training of the agent in the environment.
+
+        Args:
+            epochs: int, number of epochs.
+            segments: int, number of segments.
+            episodes: int, number of episodes.
+            wall_time: float, time limit of the run.
+            save_directory: str, directory where to save the environment.
+        """
 
         self.notify('Beginning training')
 
@@ -376,7 +443,14 @@ class Environment(BaseEnvironment):
 
         self.notify('Training ended.')
 
+    # TODO: debug
     def save(self, directory):
+        """
+        Save the environment.
+
+        Args:
+            directory: str, directory where to save.
+        """
 
         os.makedirs(directory, exist_ok=True)
 
@@ -399,9 +473,20 @@ class Environment(BaseEnvironment):
         torch.save(self.replay_memory, os.path.join(directory, 'buffer.pth'))
 
     def state_representation(self, state):
+        """
+        Compute the representation of a state; can be the full vector or a tiling.
 
-        if self.tiling:
+        Args:
+            state: np.array, full observation of the state.
 
+        Returns:
+            np.array, representation of the state as a vector.
+        """
+
+        if self.representation_method == 'vector':
+            return state
+
+        elif self.representation_method == 'tiling':
             tilings = np.zeros((len(state), self.n_tilings, self.n_bins))
 
             for i in range(len(state)):
@@ -411,14 +496,79 @@ class Environment(BaseEnvironment):
             return np.ravel(tilings, order='F')
 
         else:
-            return state
+            raise Exception("No such method (must be vector or tiling for the base environment).")
+
+    def get_input_dimension(self):
+        """
+        Compute the dimension of the state representation.
+
+        Returns:
+            int, dimension of the input.
+        """
+
+        return self.state_representation(self.environment.reset()).shape[0]
+
+    def bytes_evolution_range(self, n_episodes_exploration=100, n_episodes_evaluation=100):
+        """
+        Compute the range of evolution of each of the 128 bytes.
+
+        Args:
+            n_episodes_exploration: int, number of exploration episodes to test.
+            n_episodes_evaluation: int, number of evaluation episodes to test.
+
+        Returns:
+            min_features: np.array, vector with the minimal value of each bytes
+            max_features: np.array, vector with the maximal value of each bytes
+        """
+
+        min_features = int(self.max_ram) * np.ones(self.ram_dim, dtype=np.int_)
+        max_features = int(self.min_ram) * np.ones(self.ram_dim, dtype=np.int_)
+
+        for _ in range(n_episodes_exploration):
+            full_return, counter, observations = self.exploration_episode(return_observations=True)
+
+            observations = np.asarray(observations)
+            min_obs, max_obs = np.amin(observations, axis=0), np.amax(observations, axis=0)
+
+            for i in range(self.ram_dim):
+                if min_obs[i] < min_features[i]:
+                    min_features[i] = int(min_obs[i])
+                if max_obs[i] > max_features[i]:
+                    max_features[i] = int(max_obs[i])
+
+        for _ in range(n_episodes_evaluation):
+            full_return, counter, observations = self.evaluation_episode(return_observations=True)
+
+            observations = np.asarray(observations)
+            min_obs, max_obs = np.amin(observations, axis=0), np.amax(observations, axis=0)
+
+            for i in range(self.ram_dim):
+                if min_obs[i] < min_features[i]:
+                    min_features[i] = int(min_obs[i])
+                if max_obs[i] > max_features[i]:
+                    max_features[i] = int(max_obs[i])
+
+        return min_features, max_features
 
 
 class SimplifiedEnvironment(Environment):
-    """A simplified environment with only 3 actions."""
+    """ A simplified environment with only 3 actions. """
+
+    def __init__(self, environment, agent, seed=None, verbose=False, max_steps=1000, slack=None, capacity=10000,
+                 representation_method='vector', n_tilings=1, n_bins=10):
+        """ Initializes the simplified environment. """
+
+        super(SimplifiedEnvironment, self).__init__(environment, agent, seed, verbose, max_steps, slack, capacity,
+                                                    representation_method, n_tilings, n_bins)
+
+        self.n_actions = 3
 
     def step(self, action):
-        if action > 0:
+        """ Take a step in the environment; deal with the initial action and the final one (loss of first life). """
+
+        if action == -1:
+            action = 1
+        elif action > 0:
             action += 1
 
         s, r, d, i = self.environment.step(action)
@@ -433,28 +583,131 @@ class SimplifiedEnvironment(Environment):
         return s, r, d, i
 
     def reset(self):
-        super().reset()
+        """ Reset the agent, the environment, take the first step (fire), and chose the next action. """
 
-        s, r, d, i = self.environment.step(1)
+        self.agent.reset()
+        self.environment.reset()
 
-        self.state = self.state_representation(s)
+        state, _, _, _ = self.environment.step(1)
+        self.state = self.state_representation(state)
+
+        if self.agent is not None:
+            self.action = self.sample_action(self.boltzmann(self.state))
+        else:
+            self.action = 0
 
 
 class OverSimplifiedEnvironment(SimplifiedEnvironment):
-    """An over simplified environment with only 3 actions and 15 features."""
+    """An over simplified environment with only 3 actions and about 15 features."""
 
-    features = np.array([
-        57, 70, 71, 72, 74, 75, 86, 90, 94, 95, 99, 101, 103, 105, 119
-    ])
+    def __init__(self, environment, agent, seed=None, verbose=False, max_steps=1000, slack=None, capacity=10000,
+                 representation_method='vector', n_tilings=1, n_bins=10, mixed_threshold=15, max_tiling=8):
+        """ Initializes the over simplified environment. """
 
-    def reset(self):
-        super().reset()
-        self.state = self.state_representation(self.state[self.features])
+        super(OverSimplifiedEnvironment, self).__init__(environment, agent, seed, verbose, max_steps, slack, capacity,
+                                                        representation_method, n_tilings, n_bins)
 
-    def step(self, action):
+        self.features = np.array([
+            0, 12, 18, 19, 24, 25, 30, 49, 57, 70, 71, 72, 74, 75, 77, 84, 86, 90, 91, 94, 95, 96, 99, 100, 101, 103,
+            105, 106, 107, 119, 121, 122, 102, 104, 109, 6, 31,
+        ])
 
-        s, r, d, i = super().step(action)
+        self.min_range = np.array([
+            15, 207, 207, 243, 15, 252, 0, 225, 4, 0, 1, 55, 2, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            150, 0, 0, 0, 63, 0
+        ])
+        self.max_range = np.array([
+            63, 255, 255, 255, 255, 255, 192, 240, 5, 184, 6, 191, 8, 13, 1, 5, 25, 255, 3, 228, 135, 28, 232, 128, 208,
+            255, 255, 128, 129, 255, 150, 246, 128, 128, 2, 255, 192
+        ])
 
-        s = self.state_representation(s[self.features])
+        self.mixed_threshold = mixed_threshold
+        self.max_tiling = max_tiling
 
-        return s, r, d, i
+        self.tilings = self.get_tilings()
+
+    def get_tilings(self):
+        """
+        Compute the number of tilings for each feature as an affine function evolving between 1 and self.max_tiling.
+
+        Returns:
+            tilings: list, number of tiling for each feature.
+        """
+
+        tilings = []
+
+        for i in range(len(self.features)):
+            d = self.max_range[i] - self.min_range[i]
+
+            tilings.append(
+                int(1 + d * self.max_tiling // (self.max_ram - self.min_ram))
+            )
+
+        return tilings
+
+    def state_representation(self, state):
+        """
+        Compute the representation of a state; can be the full vector, a tiling, a 1 hot encoding, or a mixed version
+        of the last two.
+
+        Args:
+            state: np.array, full observation of the state.
+
+        Returns:
+            np.array, representation of the state as a vector.
+        """
+
+        state = state[self.features]
+
+        if self.representation_method == 'vector':
+            return state
+
+        elif self.representation_method == 'tiling':
+            representation = []
+
+            for i in range(len(self.features)):
+                unraveled_tiling = tiling(value=state[i],
+                                          min_value=self.min_range[i],
+                                          max_value=self.max_range[i],
+                                          n_tilings=self.tilings[i],
+                                          n_bins=self.mixed_threshold)
+
+                representation.extend(list(np.ravel(unraveled_tiling, order='F')))
+
+            return np.asarray(representation)
+
+        elif self.representation_method == 'one_hot_encoding':
+            representation = []
+
+            for i in range(len(self.features)):
+                representation.extend(list(one_hot_encoding(value=state[i],
+                                                            min_value=self.min_range[i],
+                                                            max_value=self.max_range[i])))
+
+            return np.asarray(representation)
+
+        elif self.representation_method == 'mixed':
+            representation = []
+
+            for i in range(len(self.features)):
+
+                if self.max_range[i] - self.min_range[i] >= self.mixed_threshold:
+
+                    unraveled_tiling = tiling(value=state[i],
+                                              min_value=self.min_range[i],
+                                              max_value=self.max_range[i],
+                                              n_tilings=self.tilings[i],
+                                              n_bins=self.mixed_threshold)
+
+                    representation.extend(list(np.ravel(unraveled_tiling, order='F')))
+
+                else:
+                    representation.extend(one_hot_encoding(value=state[i],
+                                                           min_value=self.min_range[i],
+                                                           max_value=self.max_range[i]))
+
+            return np.asarray(representation)
+
+        else:
+            raise Exception("No such method (must be vector, tiling, one_hot_encoding or mixed, for the " +
+                            "OverSimplified environment)")

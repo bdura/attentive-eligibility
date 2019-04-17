@@ -37,6 +37,12 @@ class DQNAgent(BaseAgent):
         self.optimiser = optimiser
 
     def get_config(self):
+        """
+        Compute the configuration of the agent as a dictionary .
+
+        Returns:
+            config, dict: configuration of the agent.
+        """
 
         config = {
             'gamma': self.gamma,
@@ -49,6 +55,7 @@ class DQNAgent(BaseAgent):
 
     def commit(self):
         """Commits the changes made to the model, by moving them over to the fixed model."""
+
         self.fixed.load_state_dict(copy.deepcopy(self.model.state_dict()))
 
     def tensorise(self, array):
@@ -139,15 +146,28 @@ class DQNAgent(BaseAgent):
             self.optimiser.step()
 
     def target(self, reward, next_state):
+        """
+        Compute a single target to perform an update.
+
+        Args:
+            reward: float, observed reward by the agent.
+            next_state: np.array, following state.
+
+        Returns:
+            target: float, target for the update.
+        """
+
         q = self.q(next_state)
 
         probability = self.boltzmann(q)
 
         if self.algorithm == 'sarsa':
             action = self.sample_action(probability)
-            target = reward + self.gamma * q[action]
+            target = reward.reshape(-1, 1) + self.gamma * q[action]
+
         elif self.algorithm == 'expsarsa':
             target = reward + self.gamma * probability @ q.T
+
         else:
             target = reward + self.gamma * q.max(axis=1)
 

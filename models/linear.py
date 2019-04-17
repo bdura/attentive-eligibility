@@ -25,8 +25,8 @@ class Linear(nn.Module):
     def get_config(self):
 
         config = {
-            'input_dimension': self.input_layer.in_features,
-            'n_actions': self.action_layer.out_features
+            'input_dimension': self.layer.in_features,
+            'n_actions': self.layer.out_features
         }
 
         return config

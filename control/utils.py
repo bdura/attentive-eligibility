@@ -89,7 +89,8 @@ def delete(func):
 
 def tiling(value, min_value, max_value, n_tilings, n_bins):
     """
-    Compute the tiling of a single value.
+    Compute the tiling of a single value; in the case were min_value or max_value is incorrect (value is not in this
+    interval), value is considered artificially as in the interval.
 
     Args:
         value: float, value responsible for the tiling.
@@ -99,7 +100,7 @@ def tiling(value, min_value, max_value, n_tilings, n_bins):
         n_bins: int, number of bins to compute.
 
     Returns:
-        tiling: np-array, corresponding tiling as a n_tiling by n_bins matrix.
+        tiling: np.array, corresponding tiling as a n_tiling by n_bins matrix.
     """
 
     tiling = np.zeros((n_tilings, n_bins))
@@ -113,12 +114,45 @@ def tiling(value, min_value, max_value, n_tilings, n_bins):
 
         index = int((value - min_tiling) * n_bins // (max_tiling - min_tiling))
 
-        if (0 <= index) and (index < n_bins):
-            tiling[i_tiling, index] = 1
+        if index < 0:
+            index = 0
+        elif index > n_bins - 1:
+            index = n_bins - 1
 
-        offset += interval / (n_tilings - 1)
+        tiling[i_tiling, index] = 1
+
+        if n_tilings > 1:
+            offset += interval / (n_tilings - 1)
 
     return tiling
+
+
+def one_hot_encoding(value, min_value, max_value):
+    """
+    Compute the one hot encoding for a single value; in the case were min_value or max_value is incorrect (value is not in this
+    interval), value is considered artificially as in the interval.
+
+    Args:
+        value: float, value responsible for the tiling.
+        min_value: float, minimal possible value of value.
+        max_value: float, maximal possible value of value.
+
+    Returns:
+        one_hot_encoding, list, one hot encoding of the value.
+    """
+
+    one_hot_encoding = np.zeros(max_value - min_value + 1)
+
+    idx = int(value - min_value)
+
+    if idx < 0:
+        idx = 0
+    elif idx > max_value - min_value:
+        idx = max_value - min_value
+
+    one_hot_encoding[idx] = 1
+
+    return one_hot_encoding
 
 
 class BaseEnvironment:
@@ -202,7 +236,11 @@ class BaseAgent(object):
         return p
 
     def sample_action(self, p):
-        action = np.random.choice(self.n_actions, p=p)
+        if len(p.shape) == 1:
+            action = np.random.choice(self.n_actions, p=p)
+        else:
+            action = [np.random.choice(self.n_actions, p=proba) for proba in p]
+
         return action
 
 
@@ -261,10 +299,3 @@ class ReplayMemory(object):
 
     def __len__(self):
         return len(self.memory)
-
-
-if __name__ == '__main__':
-    # Test the tiling
-    for i in range(11):
-        print(tiling(i * 256 / 10, 0, 256, 4, 10))
-        print()
