@@ -4,6 +4,7 @@ import os
 import json
 
 import torch
+import gym
 
 from control.utils import softmax, tiling, one_hot_encoding, BaseEnvironment
 from control.utils import Episode, ReplayMemory, Transition
@@ -14,20 +15,23 @@ import time
 class Environment(BaseEnvironment):
 
     def __init__(self, environment, agent, seed=None, verbose=False, max_steps=1000, slack=None, capacity=10000,
-                 representation_method='vector', n_tilings=1, n_bins=10):
+                 representation_method='observation', n_tilings=1, n_bins=10):
         """ Initializes the environment. """
 
         super(Environment, self).__init__(verbose=verbose)
 
         np.random.seed(seed)
 
+        assert type(environment.action_space) is gym.spaces.discrete.Discrete
+        assert \
+            type(environment.observation_space) is gym.spaces.discrete.Discrete or \
+            type(environment.observation_space) is gym.spaces.box.Box
+
         self.environment = environment
         self.agent = agent
 
         self.state = None
         self.action = None
-
-        self.n_actions = 4
 
         self.max_steps = max_steps
 
@@ -40,9 +44,17 @@ class Environment(BaseEnvironment):
         self.n_tilings = n_tilings
         self.n_bins = n_bins
 
-        self.ram_dim = 128
-        self.min_ram = 0
-        self.max_ram = 256
+        self.n_actions = environment.action_space.n
+
+        if type(environment.observation_space) is gym.spaces.discrete.Discrete:
+            self.obs_dim = 1
+            self.min_obs = 0
+            self.max_obs = environment.observation_space.n
+
+        elif type(environment.observation_space) is gym.spaces.box.Box:
+            self.obs_dim = environment.observation_space.shape[0]
+            self.min_obs = min(environment.observation_space.low)
+            self.max_obs = max(environment.observation_space.high) + 1
 
     def get_config(self):
         """
@@ -81,7 +93,7 @@ class Environment(BaseEnvironment):
 
         q = self.agent.q(state)
 
-        best_as = np.arange(self.agent.n_actions)[q == q.max()]
+        best_as = np.arange(self.n_actions)[q == q.max()]
 
         return best_as
 
@@ -101,7 +113,7 @@ class Environment(BaseEnvironment):
 
         best_as = self.greedy(state)
 
-        p = np.ones(self.agent.n_actions) * epsilon / self.agent.n_actions
+        p = np.ones(self.n_actions) * epsilon / self.n_actions
         p[best_as] += (1 - epsilon) / len(best_as)
 
         return p
@@ -139,7 +151,7 @@ class Environment(BaseEnvironment):
             action (int): The next action to take
         """
 
-        action = np.random.choice(self.agent.n_actions, p=p)
+        action = np.random.choice(self.n_actions, p=p)
 
         return action
 
@@ -208,11 +220,13 @@ class Environment(BaseEnvironment):
         return d, r, transition
 
     def reset(self):
-        """ Reset the agent, the environment, and defines the first step as fire. """
+        """ Reset the agent, the environment. """
 
         self.agent.reset()
         self.state = self.state_representation(self.environment.reset())
-        self.action = 1
+
+        if self.agent is not None:
+            self.action = self.sample_action(self.boltzmann(self.state))
 
     def evaluation_episode(self, render=False, return_observations=False):
         """
@@ -474,7 +488,7 @@ class Environment(BaseEnvironment):
 
     def state_representation(self, state):
         """
-        Compute the representation of a state; can be the full vector or a tiling.
+        Compute the representation of a state; can be the full observation or a tiling.
 
         Args:
             state: np.array, full observation of the state.
@@ -483,20 +497,38 @@ class Environment(BaseEnvironment):
             np.array, representation of the state as a vector.
         """
 
-        if self.representation_method == 'vector':
+        if self.representation_method == 'observation':
             return state
 
         elif self.representation_method == 'tiling':
+            assert type(self.environment.observation_space) is gym.spaces.box.Box
+
             tilings = np.zeros((len(state), self.n_tilings, self.n_bins))
 
             for i in range(len(state)):
-                tilings[i, :, :] = tiling(value=state[i], min_value=self.min_ram, max_value=self.max_ram,
+                tilings[i, :, :] = tiling(value=state[i], min_value=self.min_obs, max_value=self.max_obs,
                                           n_tilings=self.n_tilings, n_bins=self.n_bins)
 
             return np.ravel(tilings, order='F')
 
+        elif self.representation_method == 'one_hot_encoding':
+            representation = []
+
+            if type(self.environment.observation_space) is gym.spaces.discrete.Discrete:
+                representation = one_hot_encoding(value=state,
+                                                  min_value=self.min_obs,
+                                                  max_value=self.max_obs)
+
+            elif type(self.environment.observation_space) is gym.spaces.box.Box:
+                for i in range(self.obs_dim):
+                    representation.extend(list(one_hot_encoding(value=state[i],
+                                                                min_value=self.min_obs,
+                                                                max_value=self.max_obs)))
+
+            return np.asarray(representation)
+
         else:
-            raise Exception("No such method (must be vector or tiling for the base environment).")
+            raise Exception("No such method (must be vector, tiling or one-hot-encoding for the base environment).")
 
     def get_input_dimension(self):
         """
@@ -521,8 +553,8 @@ class Environment(BaseEnvironment):
             max_features: np.array, vector with the maximal value of each bytes
         """
 
-        min_features = int(self.max_ram) * np.ones(self.ram_dim, dtype=np.int_)
-        max_features = int(self.min_ram) * np.ones(self.ram_dim, dtype=np.int_)
+        min_features = int(self.max_obs) * np.ones(self.obs_dim, dtype=np.int_)
+        max_features = int(self.min_obs) * np.ones(self.obs_dim, dtype=np.int_)
 
         for _ in range(n_episodes_exploration):
             full_return, counter, observations = self.exploration_episode(return_observations=True)
@@ -530,7 +562,7 @@ class Environment(BaseEnvironment):
             observations = np.asarray(observations)
             min_obs, max_obs = np.amin(observations, axis=0), np.amax(observations, axis=0)
 
-            for i in range(self.ram_dim):
+            for i in range(self.obs_dim):
                 if min_obs[i] < min_features[i]:
                     min_features[i] = int(min_obs[i])
                 if max_obs[i] > max_features[i]:
@@ -542,7 +574,7 @@ class Environment(BaseEnvironment):
             observations = np.asarray(observations)
             min_obs, max_obs = np.amin(observations, axis=0), np.amax(observations, axis=0)
 
-            for i in range(self.ram_dim):
+            for i in range(self.obs_dim):
                 if min_obs[i] < min_features[i]:
                     min_features[i] = int(min_obs[i])
                 if max_obs[i] > max_features[i]:
@@ -557,6 +589,8 @@ class SimplifiedEnvironment(Environment):
     def __init__(self, environment, agent, seed=None, verbose=False, max_steps=1000, slack=None, capacity=10000,
                  representation_method='vector', n_tilings=1, n_bins=10):
         """ Initializes the simplified environment. """
+
+        assert environment.unwrapped.spec.id == 'Breakout-ram-v0'
 
         super(SimplifiedEnvironment, self).__init__(environment, agent, seed, verbose, max_steps, slack, capacity,
                                                     representation_method, n_tilings, n_bins)
@@ -593,8 +627,6 @@ class SimplifiedEnvironment(Environment):
 
         if self.agent is not None:
             self.action = self.sample_action(self.boltzmann(self.state))
-        else:
-            self.action = 0
 
 
 class OverSimplifiedEnvironment(SimplifiedEnvironment):
@@ -640,15 +672,15 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
             d = self.max_range[i] - self.min_range[i]
 
             tilings.append(
-                int(1 + d * self.max_tiling // (self.max_ram - self.min_ram))
+                int(1 + d * self.max_tiling // (self.max_obs - self.min_obs))
             )
 
         return tilings
 
     def state_representation(self, state):
         """
-        Compute the representation of a state; can be the full vector, a tiling, a 1 hot encoding, or a mixed version
-        of the last two.
+        Compute the representation of a state; can be the full observation, a tiling, a 1 hot encoding, or a mixed
+        version of the last two.
 
         Args:
             state: np.array, full observation of the state.
@@ -659,7 +691,7 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
 
         state = state[self.features]
 
-        if self.representation_method == 'vector':
+        if self.representation_method == 'observation':
             return state
 
         elif self.representation_method == 'tiling':
