@@ -14,8 +14,9 @@ import time
 
 class Environment(BaseEnvironment):
 
-    def __init__(self, environment, agent, seed=None, verbose=False, max_steps=1000, slack=None, capacity=10000,
-                 representation_method='observation', n_tilings=1, n_bins=10):
+    def __init__(self, environment, agent, seed=None, verbose=True, max_steps=200, slack=None, capacity=10000,
+                 representation_method='observation', n_tilings=1, n_bins=10, use_double_learning=True,
+                 use_replay_memory=True):
         """ Initializes the environment. """
 
         super(Environment, self).__init__(verbose=verbose)
@@ -35,7 +36,11 @@ class Environment(BaseEnvironment):
 
         self.max_steps = max_steps
 
-        self.replay_memory = ReplayMemory(capacity=capacity)
+        self.use_double_learning = use_double_learning
+        self.use_replay_memory = use_replay_memory
+
+        if self.use_replay_memory:
+            self.replay_memory = ReplayMemory(capacity=capacity)
 
         self.slack = slack
 
@@ -281,7 +286,7 @@ class Environment(BaseEnvironment):
         else:
             return full_return, counter, observations
 
-    def exploration_episode(self, render=False, return_observations=False):
+    def exploration_episode(self, render=False, return_observations=False, training=False):
         """
         Runs a full exploration episode.
 
@@ -296,7 +301,11 @@ class Environment(BaseEnvironment):
         """
 
         observations = []
-        episode = Episode()
+
+        if self.use_replay_memory:
+            episode = Episode()
+        else:
+            episode = None
 
         self.reset()
 
@@ -314,7 +323,12 @@ class Environment(BaseEnvironment):
         while not done and counter < self.max_steps:
             done, reward, transition = self.explore()
 
-            episode.push(transition)
+            if self.use_replay_memory:
+                episode.push(transition)
+
+            elif training:
+                target = self.agent.target(transition.reward, transition.next_states)
+                self.agent.update(transition.state, transition.action, target)
 
             full_return = self.agent.gamma * full_return + reward
             counter += 1
@@ -326,7 +340,8 @@ class Environment(BaseEnvironment):
             if return_observations:
                 observations.append(self.environment.unwrapped._get_obs())
 
-        self.replay_memory.push(episode)
+        if self.use_replay_memory:
+            self.replay_memory.push(episode)
 
         if render:
             self.environment.close()
@@ -337,7 +352,7 @@ class Environment(BaseEnvironment):
         else:
             return full_return, counter, observations
 
-    def exploration_segment(self, episodes=100):
+    def exploration_segment(self, episodes=100, training=False):
         """
         Runs a full segment, which consists of ten training episodes followed by
         one evaluation episode (following the greedy policy obtained so far).
@@ -351,7 +366,7 @@ class Environment(BaseEnvironment):
 
         # self.agent.commit()
 
-        training_return = np.mean([self.exploration_episode()[0] for _ in range(episodes)])
+        training_return = np.mean([self.exploration_episode(training=training)[0] for _ in range(episodes)])
         testing_return = self.evaluation_episode()[0]
 
         return training_return, testing_return
@@ -364,7 +379,7 @@ class Environment(BaseEnvironment):
             batch_size (int): The number of episodes to train on.
         """
 
-        assert len(self.replay_memory) > 0
+        assert self.use_replay_memory and len(self.replay_memory) > 0
 
         buffer = self.replay_memory
 
@@ -411,11 +426,17 @@ class Environment(BaseEnvironment):
         with iterator as it:
             for _ in it:
 
-                self.agent.commit()
-                returns.append(self.exploration_segment(episodes))
+                if self.use_double_learning:
+                    self.agent.commit()
 
-                for _ in range(2 * len(self.replay_memory) // 100):
-                    self.batch(100)
+                if self.use_replay_memory:
+                    returns.append(self.exploration_segment(episodes, training=False))
+
+                    for _ in range(2 * len(self.replay_memory) // 100):
+                        self.batch(100)
+
+                else:
+                    returns.append(self.exploration_segment(episodes, training=True))
 
         return np.array(returns)
 

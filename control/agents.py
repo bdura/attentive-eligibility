@@ -16,7 +16,7 @@ class DQNAgent(BaseAgent):
     name = 'DQNAgent'
 
     def __init__(self, model, optimiser, gamma=.9, temperature=1, algorithm='expsarsa', n_actions=4,
-                 use_eligibility=False):
+                 use_eligibility=False, use_double_learning=True):
         """
         Initialises the object.
 
@@ -31,7 +31,11 @@ class DQNAgent(BaseAgent):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.model = model.to(self.device)
-        self.fixed = copy.deepcopy(self.model).eval()
+
+        self.use_double_learning = use_double_learning
+
+        if self.use_double_learning:
+            self.fixed = copy.deepcopy(self.model).eval()
 
         self.criterion = nn.SmoothL1Loss()
         self.optimiser = optimiser
@@ -55,6 +59,8 @@ class DQNAgent(BaseAgent):
 
     def commit(self):
         """Commits the changes made to the model, by moving them over to the fixed model."""
+
+        assert self.use_double_learning
 
         self.fixed.load_state_dict(copy.deepcopy(self.model.state_dict()))
 
@@ -107,7 +113,10 @@ class DQNAgent(BaseAgent):
             if squeezed:
                 state = state.unsqueeze(0)
 
-            actions = self.fixed(state)
+            if self.use_double_learning:
+                actions = self.fixed(state)
+            else:
+                actions = self.model(state)
 
             # Remove the batch dimension
             if squeezed:
@@ -159,6 +168,9 @@ class DQNAgent(BaseAgent):
         """
 
         q = self.q(next_state)
+
+        if isinstance(reward, int):
+            reward = np.asarray(reward)
 
         probability = self.boltzmann(q)
 
@@ -236,7 +248,8 @@ class DQNAgent(BaseAgent):
         """Resets the model."""
 
         self.model.reset()
-        self.fixed.reset()
+        if self.use_double_learning:
+            self.fixed.reset()
 
         # self.commit()
 
