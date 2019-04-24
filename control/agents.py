@@ -15,7 +15,7 @@ class DQNAgent(BaseAgent):
 
     name = 'DQNAgent'
 
-    def __init__(self, model, optimiser, gamma=.9, temperature=1, algorithm='expsarsa', n_actions=4,
+    def __init__(self, model, optimiser, n_actions, gamma=.9, temperature=1, algorithm='expsarsa',
                  use_eligibility=False):
         """
         Initialises the object.

@@ -392,13 +392,14 @@ class Environment(BaseEnvironment):
 
         self.agent.batch_update(states, actions, rewards, next_states)
 
-    def train(self, segments=100, episodes=100):
+    def train(self, segments=100, episodes=100, batch_size=100):
         """
         Trains the agent. Alternates exploration and batch gradient descent.
 
         Args:
             segments (int): The number of segments of exploration to perform.
             episodes (int): The number of episodes for each segment.
+            batch_size (int): The number of episodes per batch.
 
         Returns:
             returns (np.array): The mean return for each segment.
@@ -415,11 +416,12 @@ class Environment(BaseEnvironment):
                 returns.append(self.exploration_segment(episodes))
 
                 for _ in range(2 * len(self.replay_memory) // 100):
-                    self.batch(100)
+                    self.batch(batch_size)
 
         return np.array(returns)
 
-    def run(self, epochs=10, segments=10, episodes=50, wall_time=10, save_directory=None):
+    def run(self, epochs=10, segments=10, episodes=50, wall_time=10, num_evaluation=200, batch_size=100,
+            save_directory=None):
         """
         Run a full training of the agent in the environment.
 
@@ -437,12 +439,12 @@ class Environment(BaseEnvironment):
 
         for i in range(epochs):
 
-            returns = self.train(segments, episodes).mean(axis=0)[0]
+            returns = self.train(segments, episodes, batch_size).mean(axis=0)[0]
 
             self.notify('>> Training return : {:.2f}'.format(returns))
             self.print('>> Training return : {:.2f}'.format(returns))
 
-            mean_return, steps = np.array([self.evaluation_episode() for _ in range(200)]).mean(axis=0)
+            mean_return, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)]).mean(axis=0)
 
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
             self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
