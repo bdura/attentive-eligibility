@@ -175,7 +175,7 @@ class DQNAgent(BaseAgent):
         return target
 
     def targets(self, rewards, next_states):
-        """
+        r"""
         Computes the targets corresponding to a tuple (reward, next_state).
 
         ..math::
@@ -209,11 +209,14 @@ class DQNAgent(BaseAgent):
 
         # Resetting the networks.
         self.reset()
-        self.optimiser.zero_grad()
 
         targets = self.targets(rewards, next_states)
 
         for state, action, target in zip(states, actions, targets):
+
+            # Zeroing the gradients
+            self.optimiser.zero_grad()
+
             state = self.tensorise(state)
 
             q = torch.gather(self.model(state), dim=1, index=self.tensorise(action).unsqueeze(1))
@@ -221,8 +224,8 @@ class DQNAgent(BaseAgent):
             loss = self.criterion(q, self.tensorise(target))
             loss.backward(retain_graph=True)
 
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-            torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
+            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            # torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
 
             if self.use_eligibility:
                 self.optimiser.step(loss)
