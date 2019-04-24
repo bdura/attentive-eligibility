@@ -415,7 +415,7 @@ class Environment(BaseEnvironment):
                 returns.append(self.exploration_segment(episodes))
 
                 for _ in range(2 * len(self.replay_memory) // 100):
-                    self.batch(100)
+                    self.batch(1)
 
         return np.array(returns)
 

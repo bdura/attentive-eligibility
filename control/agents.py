@@ -126,6 +126,7 @@ class DQNAgent(BaseAgent):
         """
 
         state = self.tensorise(state)
+        self.optimiser.zero_grad()
 
         # Add a batch dimension
         state = state.unsqueeze(0)
@@ -208,6 +209,7 @@ class DQNAgent(BaseAgent):
 
         # Resetting the networks.
         self.reset()
+        self.optimiser.zero_grad()
 
         targets = self.targets(rewards, next_states)
 

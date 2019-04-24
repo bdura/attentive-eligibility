@@ -16,24 +16,21 @@ def experiment_train(environment, n_trainings):
 
     for _ in range(n_trainings):
         returns = environment.train(segments=10, episodes=100)
+        train_return = np.mean(returns.T[0])
+        eval_return = np.mean(returns.T[1])
 
-        plt.figure()
-        plt.plot(returns.T[0], label='training')
-        plt.plot(returns.T[1], label='evaluation')
-        plt.legend()
-        plt.show()
+        print('Training return: ', train_return)
+        print('Eval return: ', eval_return)
 
-        # agent.temperature *= .8
-
-        returns_train.append(np.mean(returns.T[0]))
-        returns_eval.append(np.mean(returns.T[1]))
+        returns_train.append(train_return)
+        returns_eval.append(eval_return)
 
         q_estimation.append(environment.agent.q(environment.state_representation(environment.environment.reset())))
 
     return returns_train, returns_eval, q_estimation
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
     env_name = 'Taxi-v2'
     # env_name = 'Breakout-ram-v0'
 
@@ -52,7 +49,7 @@ if __name__ == '__main__':
                      n_actions=environment.n_actions,
                      dropout=.5)
 
-    optimiser = torch.optim.Adam(model.parameters(), lr=.001)
+    optimiser = torch.optim.Adam(model.parameters(), lr=.1)
 
     agent = agents.DQNAgent(model,
                             optimiser,
@@ -65,19 +62,5 @@ if __name__ == '__main__':
     agent.commit()
 
     returns_train, returns_eval, q_estimation = experiment_train(environment, 10)
-
-    plt.figure()
-    plt.plot(returns_train, label='mean training')
-    plt.plot(returns_eval, label='mean evaluation')
-    plt.legend()
-    plt.show()
-
-    q_estimation = np.asarray(q_estimation)
-    plt.figure()
-    plt.plot(q_estimation[:, 0], label='initial q of wait')
-    plt.plot(q_estimation[:, 1], label='initial q of left')
-    plt.plot(q_estimation[:, 2], label='initial q of right')
-    plt.legend()
-    plt.show()
 
     environment.agent.save('../saved/mixed_mlp')
