@@ -355,10 +355,10 @@ class Environment(BaseEnvironment):
             self.environment.close()
 
         if not return_observations:
-            return full_return, counter
+            return torch.Tensor(full_return), counter
 
         else:
-            return full_return, counter, observations
+            return torch.Tensor(full_return), counter, observations
 
     def exploration_segment(self, episodes=100):
         """
@@ -374,7 +374,7 @@ class Environment(BaseEnvironment):
 
         # self.agent.commit()
 
-        training_return = torch.mean(torch.stack([torch.Tensor(self.exploration_episode()[0]) for _ in range(episodes)]))
+        training_return = torch.mean(torch.Tensor([self.exploration_episode()[0] for _ in range(episodes)]))
 
         testing_return = self.evaluation_episode()[0]
 
