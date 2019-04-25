@@ -361,6 +361,62 @@ class Environment(BaseEnvironment):
         else:
             return full_return, counter, observations
 
+    def backup(self, algorithm='sarsa'):
+
+        s, r, d, i = self.step(self.action)
+
+        self.agent.commit()
+
+        p = self.boltzmann(s)
+        a = self.sample_action(p)
+
+        current = self.agent.model(self.agent.tensorise(self.state).unsqueeze(0)).squeeze()[self.action]
+
+        if algorithm == 'sarsa':
+            # Regular Sarsa is an on-policy method
+            target = r + self.agent.gamma * self.agent.q(s)[a]
+        elif algorithm == 'expsarsa':
+            target = r + self.agent.gamma * p @ self.agent.q(s)[a]
+        else:
+            target = r + self.agent.gamma * self.agent.q(s).max()
+
+        self.agent.model.zero_grad()
+
+        loss = self.agent.criterion(current.unsqueeze(0), self.agent.tensorise(target).unsqueeze(0))
+        loss.backward()
+
+        self.agent.optimiser.step()
+
+        # We store the new state and action
+        self.state, self.action = s, a
+
+        return d, r
+
+    def training_episode(self):
+        """
+        Runs a full training episode.
+
+        Returns:
+            full_return (float): The full return obtained during the experiment.
+            counter (int): The number of timesteps.
+            observations (list): full observations of the states.
+        """
+
+        self.reset()
+
+        done = False
+        full_return = 0.
+
+        counter = 0
+
+        while not done:
+            done, reward = self.backup()
+
+            counter += 1
+            full_return += reward
+
+        return full_return, counter
+
     def exploration_segment(self, episodes=100, training=False):
         """
         Runs a full segment, which consists of ten training episodes followed by
@@ -787,8 +843,10 @@ if __name__ == '__main__':
 
     model = Linear()
 
+    torch.nn.init.zeros_(model.weight)
+
     optimiser = torch.optim.SGD(model.parameters(), lr=.1, momentum=0)
-    agent = DQNAgent(model, optimiser, gamma=.9, temperature=1, algorithm='qlearning', n_actions=6)
+    agent = DQNAgent(model, optimiser, gamma=.9, temperature=1, algorithm='sarsa', n_actions=6)
 
     environment = Environment(
         environment=gym.make('Taxi-v2'),
@@ -801,4 +859,4 @@ if __name__ == '__main__':
         use_replay_memory=False
     )
 
-    environment.exploration_episode(training=True)
+    environment.training_episode()
