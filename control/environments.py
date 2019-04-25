@@ -374,7 +374,11 @@ class Environment(BaseEnvironment):
 
         # self.agent.commit()
 
-        training_return = torch.mean(torch.Tensor([self.exploration_episode()[0] for _ in range(episodes)]))
+        l = [self.exploration_episode()[0] for _ in range(episodes)]
+        print(l)
+        l = torch.Tensor(l)
+        print(l)
+        training_return = torch.mean()
 
         testing_return = self.evaluation_episode()[0]
 
