@@ -253,7 +253,7 @@ def save_json(obj, directory, name):
 
 Transition = namedtuple(
     'Transition',
-    ('state', 'action', 'reward', 'next_states')
+    ('state', 'action', 'reward', 'next_state', 'next_action')
 )
 
 
@@ -276,8 +276,9 @@ class Episode(object):
         actions = np.array([t[1] for t in self.transitions[:length]])
         rewards = np.array([t[2] for t in self.transitions[:length]])
         next_states = np.array([t[3] for t in self.transitions[:length]])
+        next_actions = np.array([t[4] for t in self.transitions[:length]])
 
-        return states, actions, rewards, next_states
+        return states, actions, rewards, next_states, next_actions
 
 
 class ReplayMemory(object):

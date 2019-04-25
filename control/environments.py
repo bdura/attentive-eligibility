@@ -32,6 +32,7 @@ class Environment(BaseEnvironment):
 
         self.environment = environment
         self.agent = agent
+        self.agent.use_double_learning = use_double_learning
 
         self.state = None
         self.action = None
@@ -219,7 +220,7 @@ class Environment(BaseEnvironment):
         p, q = self.boltzmann(s, return_q=True)
         a = self.sample_action(p)
 
-        transition = Transition(self.state, self.action, r, s)
+        transition = Transition(self.state, self.action, r, s, a)
 
         # We store the new state and action
         self.state, self.action = s, a
@@ -330,15 +331,9 @@ class Environment(BaseEnvironment):
                 episode.push(transition)
 
             elif training:
-                # print()
-                # print(self.agent.q(self.state))
-                target = self.agent.target(transition.reward, transition.next_states)
-                # print(transition)
+                target = self.agent.target(transition.reward, transition.next_state, transition.next_action)
                 self.agent.update(transition.state, transition.action, target)
-                # self.agent.commit()
-                # print(self.agent.q(self.state))
 
-            # full_return = self.agent.gamma * full_return + reward
             full_return += reward
             counter += 1
 
@@ -393,29 +388,31 @@ class Environment(BaseEnvironment):
         return d, r
 
     def training_episode(self):
-        """
-        Runs a full training episode.
+        # """
+        # Runs a full training episode.
+        #
+        # Returns:
+        #     full_return (float): The full return obtained during the experiment.
+        #     counter (int): The number of timesteps.
+        #     observations (list): full observations of the states.
+        # """
+        #
+        # self.reset()
+        #
+        # done = False
+        # full_return = 0.
+        #
+        # counter = 0
+        #
+        # while not done:
+        #     done, reward = self.backup(self.agent.algorithm)
+        #
+        #     counter += 1
+        #     full_return += reward
+        #
+        # return full_return, counter
 
-        Returns:
-            full_return (float): The full return obtained during the experiment.
-            counter (int): The number of timesteps.
-            observations (list): full observations of the states.
-        """
-
-        self.reset()
-
-        done = False
-        full_return = 0.
-
-        counter = 0
-
-        while not done:
-            done, reward = self.backup(self.agent.algorithm)
-
-            counter += 1
-            full_return += reward
-
-        return full_return, counter
+        return self.exploration_episode(training=True)
 
     def exploration_segment(self, episodes=100, training=False):
         """

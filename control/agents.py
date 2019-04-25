@@ -60,9 +60,8 @@ class DQNAgent(BaseAgent):
     def commit(self):
         """Commits the changes made to the model, by moving them over to the fixed model."""
 
-        assert self.use_double_learning
-
-        self.fixed.load_state_dict(copy.deepcopy(self.model.state_dict()))
+        if self.use_double_learning:
+            self.fixed.load_state_dict(copy.deepcopy(self.model.state_dict()))
 
     def tensorise(self, array):
         """
@@ -156,13 +155,14 @@ class DQNAgent(BaseAgent):
         else:
             self.optimiser.step()
 
-    def target(self, reward, next_state):
+    def target(self, reward, next_state, next_action):
         """
         Compute a single target to perform an update.
 
         Args:
             reward: float, observed reward by the agent.
             next_state: np.array, following state.
+            next_action: the following action.
 
         Returns:
             target: float, target for the update.
@@ -170,16 +170,12 @@ class DQNAgent(BaseAgent):
 
         q = self.q(next_state)
 
-        q = q.reshape(-1, self.n_actions)
-
-        if isinstance(reward, int):
-            reward = np.asarray(reward)
+        reward = np.asarray(reward)
 
         probability = self.boltzmann(q)
 
         if self.algorithm == 'sarsa':
-            action = self.sample_action(probability)
-            target = reward.reshape(-1, 1) + self.gamma * q[action]
+            target = reward + self.gamma * q[next_action]
 
         elif self.algorithm == 'expsarsa':
             target = reward + self.gamma * probability @ q.T
@@ -189,7 +185,7 @@ class DQNAgent(BaseAgent):
 
         return target
 
-    def targets(self, rewards, next_states):
+    def targets(self, rewards, next_states, next_actions):
         r"""
         Computes the targets corresponding to a tuple (reward, next_state).
 
@@ -199,6 +195,7 @@ class DQNAgent(BaseAgent):
         Args:
             rewards (np.array): The rewards.
             next_states (np.array): Next states.
+            next_actions (np.array): Next actions
 
         Returns:
             targets (np.array): The targets.
@@ -206,12 +203,12 @@ class DQNAgent(BaseAgent):
 
         targets = []
 
-        for reward, next_state in zip(rewards, next_states):
-            targets.append(self.target(reward, next_state))
+        for reward, next_state, next_action in zip(rewards, next_states, next_actions):
+            targets.append(self.target(reward, next_state, next_action))
 
         return np.stack(targets)
 
-    def batch_update(self, states, actions, rewards, next_states):
+    def batch_update(self, states, actions, rewards, next_states, next_actions):
         """
         Performs a gradient descent step on the model.
 
@@ -220,6 +217,7 @@ class DQNAgent(BaseAgent):
             actions (np.array): The action taken.
             rewards (np.array): The reward.
             next_states (np.array): The representation for the next state.
+            next_actions (np.array): The next actions.
         """
 
         # Resetting the networks.
@@ -238,9 +236,6 @@ class DQNAgent(BaseAgent):
 
             loss = self.criterion(q, self.tensorise(target))
             loss.backward(retain_graph=True)
-
-            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-            # torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
 
             if self.use_eligibility:
                 self.optimiser.step(loss)
