@@ -37,7 +37,7 @@ class DQNAgent(BaseAgent):
         if self.use_double_learning:
             self.fixed = copy.deepcopy(self.model).eval()
 
-        self.criterion = nn.SmoothL1Loss()
+        self.criterion = nn.MSELoss()
         self.optimiser = optimiser
 
     def get_config(self):
@@ -135,7 +135,7 @@ class DQNAgent(BaseAgent):
         """
 
         state = self.tensorise(state)
-        self.optimiser.zero_grad()
+        self.model.zero_grad()
 
         # Add a batch dimension
         state = state.unsqueeze(0)
@@ -145,10 +145,11 @@ class DQNAgent(BaseAgent):
         q = actions.squeeze()[action]
 
         loss = self.criterion(q, self.tensorise(target))
-        loss.backward(retain_graph=True)
+        # loss.backward(retain_graph=True)
+        loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-        torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
+        # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        # torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
 
         if self.use_eligibility:
             self.optimiser.step(loss)
@@ -168,6 +169,8 @@ class DQNAgent(BaseAgent):
         """
 
         q = self.q(next_state)
+
+        q = q.reshape(-1, self.n_actions)
 
         if isinstance(reward, int):
             reward = np.asarray(reward)

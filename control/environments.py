@@ -9,6 +9,8 @@ import gym
 from control.utils import softmax, tiling, one_hot_encoding, BaseEnvironment
 from control.utils import Episode, ReplayMemory, Transition
 
+from control.agents import DQNAgent
+
 import time
 
 
@@ -54,7 +56,7 @@ class Environment(BaseEnvironment):
         if type(environment.observation_space) is gym.spaces.discrete.Discrete:
             self.obs_dim = 1
             self.min_obs = 0
-            self.max_obs = environment.observation_space.n
+            self.max_obs = environment.observation_space.n - 1
 
         elif type(environment.observation_space) is gym.spaces.box.Box:
             self.obs_dim = environment.observation_space.shape[0]
@@ -328,8 +330,13 @@ class Environment(BaseEnvironment):
                 episode.push(transition)
 
             elif training:
+                # print()
+                # print(self.agent.q(self.state))
                 target = self.agent.target(transition.reward, transition.next_states)
+                # print(transition)
                 self.agent.update(transition.state, transition.action, target)
+                # self.agent.commit()
+                # print(self.agent.q(self.state))
 
             # full_return = self.agent.gamma * full_return + reward
             full_return += reward
@@ -766,3 +773,32 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
         else:
             raise Exception("No such method (must be vector, tiling, one_hot_encoding or mixed, for the " +
                             "OverSimplified environment)")
+
+
+if __name__ == '__main__':
+    class Linear(torch.nn.Linear):
+
+        def __init__(self):
+            super(Linear, self).__init__(500, 6, bias=False)
+
+        def reset(self):
+            pass
+
+
+    model = Linear()
+
+    optimiser = torch.optim.SGD(model.parameters(), lr=.1, momentum=0)
+    agent = DQNAgent(model, optimiser, gamma=.9, temperature=1, algorithm='qlearning', n_actions=6)
+
+    environment = Environment(
+        environment=gym.make('Taxi-v2'),
+        agent=agent,
+        verbose=True,
+        max_steps=1000,
+        capacity=5000,
+        representation_method="one_hot_encoding",
+        use_double_learning=False,
+        use_replay_memory=False
+    )
+
+    environment.exploration_episode(training=True)
