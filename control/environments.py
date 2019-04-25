@@ -376,7 +376,7 @@ class Environment(BaseEnvironment):
             # Regular Sarsa is an on-policy method
             target = r + self.agent.gamma * self.agent.q(s)[a]
         elif algorithm == 'expsarsa':
-            target = r + self.agent.gamma * p @ self.agent.q(s)[a]
+            target = r + self.agent.gamma * p @ self.agent.q(s)
         else:
             target = r + self.agent.gamma * self.agent.q(s).max()
 
@@ -410,7 +410,7 @@ class Environment(BaseEnvironment):
         counter = 0
 
         while not done:
-            done, reward = self.backup()
+            done, reward = self.backup(self.agent.algorithm)
 
             counter += 1
             full_return += reward
