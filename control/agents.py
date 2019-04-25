@@ -33,7 +33,8 @@ class DQNAgent(BaseAgent):
         self.model = model.to(self.device)
         self.fixed = copy.deepcopy(self.model).eval()
 
-        self.criterion = nn.SmoothL1Loss()
+        # self.criterion = nn.SmoothL1Loss()
+        self.criterion = nn.MSELoss()
         self.optimiser = optimiser
 
     def get_config(self):
