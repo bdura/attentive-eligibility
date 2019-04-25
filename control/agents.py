@@ -181,7 +181,10 @@ class DQNAgent(BaseAgent):
             target = reward + self.gamma * probability @ q.T
 
         else:
-            target = reward + self.gamma * q.max(axis=1)
+            if len(q.shape) == 1:
+                target = reward + self.gamma * q.max()
+            else:
+                target = reward + self.gamma * q.max(axis=1)
 
         return target
 

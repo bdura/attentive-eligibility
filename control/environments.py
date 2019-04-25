@@ -332,8 +332,8 @@ class Environment(BaseEnvironment):
 
             elif training:
                 # TODO: check the validity of the terminal state
-                if done and False: # We make sure this is not called.
-                    target = np.zeros(1)
+                if done:  # We make sure this is not called.
+                    target = reward * np.ones(1)
                 else:
                     target = self.agent.target(transition.reward, transition.next_state, transition.next_action)
                 self.agent.update(transition.state, transition.action, target)
