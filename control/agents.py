@@ -253,12 +253,12 @@ class DQNAgent(BaseAgent):
 
             state = self.tensorise(state)
             ###
-            for i in range(100):
-                if np.argmax(state[i, :]) == torch.tensor(479):
-                    print(self.model(state[i, :]))
-                    print(target[i])
-                    print(action[i])
-                    break
+            # for i in range(100):
+            #     if np.argmax(state[i, :]) == torch.tensor(479):
+            #         print(self.model(state[i, :]))
+            #         print(target[i])
+            #         print(action[i])
+            #         break
             ###
 
             q = torch.gather(self.model(state), dim=1, index=self.tensorise(action).unsqueeze(1))
