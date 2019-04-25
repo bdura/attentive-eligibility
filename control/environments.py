@@ -267,7 +267,8 @@ class Environment(BaseEnvironment):
         counter = 0
         while not done and counter < self.max_steps:
             done, reward = step()
-            full_return = self.agent.gamma * full_return + reward
+            # full_return = self.agent.gamma * full_return + reward
+            full_return += reward
             counter += 1
 
             if render:
@@ -330,7 +331,8 @@ class Environment(BaseEnvironment):
                 target = self.agent.target(transition.reward, transition.next_states)
                 self.agent.update(transition.state, transition.action, target)
 
-            full_return = self.agent.gamma * full_return + reward
+            # full_return = self.agent.gamma * full_return + reward
+            full_return += reward
             counter += 1
 
             if render:
