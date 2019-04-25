@@ -7,7 +7,7 @@ from collections import deque
 class MLP(nn.Module):
     """A simple MLP for solving RL problems"""
 
-    def __init__(self, input_dimension=128, hidden_dimension=50, n_hidden_layers=3, n_actions=4, dropout=.1):
+    def __init__(self, input_dimension=128, hidden_dimension=50, n_hidden_layers=3, n_actions=4, dropout=0.):
         """
         Initialises the object.
 
