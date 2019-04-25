@@ -355,10 +355,10 @@ class Environment(BaseEnvironment):
             self.environment.close()
 
         if not return_observations:
-            return torch.Tensor(full_return), counter
+            return full_return, counter
 
         else:
-            return torch.Tensor(full_return), counter, observations
+            return full_return, counter, observations
 
     def exploration_segment(self, episodes=100):
         """
