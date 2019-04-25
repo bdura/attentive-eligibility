@@ -49,12 +49,17 @@ class Environment(BaseEnvironment):
         if type(environment.observation_space) is gym.spaces.discrete.Discrete:
             self.obs_dim = 1
             self.min_obs = 0
-            self.max_obs = environment.observation_space.n - 1
+            self.max_obs = environment.observation_space.n
 
         elif type(environment.observation_space) is gym.spaces.box.Box:
             self.obs_dim = environment.observation_space.shape[0]
             self.min_obs = min(environment.observation_space.low)
             self.max_obs = max(environment.observation_space.high) + 1
+
+        if environment.unwrapped.spec.id == 'Taxi-v2':
+            self.max_reward = 20
+        else:
+            self.max_reward = None
 
     def get_config(self):
         """
@@ -170,6 +175,9 @@ class Environment(BaseEnvironment):
         """
 
         s, r, d, i = self.environment.step(action)
+
+        if d and r == self.max_reward:
+            s = self.max_obs
 
         s = self.state_representation(s)
 

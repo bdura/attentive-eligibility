@@ -7,7 +7,7 @@ from collections import deque
 class Linear(nn.Module):
     """A simple Linear model for solving RL problems"""
 
-    def __init__(self, input_dimension=128, n_actions=4):
+    def __init__(self, input_dimension=128, n_actions=4, bias=False):
         """
         Initialises the object.
 
@@ -20,7 +20,7 @@ class Linear(nn.Module):
 
         self.name = 'Linear'
 
-        self.layer = nn.Linear(input_dimension, n_actions, bias=False)
+        self.layer = nn.Linear(input_dimension, n_actions, bias=bias)
 
     def get_config(self):
 
