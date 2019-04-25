@@ -37,7 +37,7 @@ class DQNAgent(BaseAgent):
         if self.use_double_learning:
             self.fixed = copy.deepcopy(self.model).eval()
 
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.MSELoss(reduction='sum')
         self.optimiser = optimiser
 
     def get_config(self):
@@ -223,7 +223,41 @@ class DQNAgent(BaseAgent):
         # Resetting the networks.
         self.reset()
 
-        targets = self.targets(rewards, next_states)
+        targets = self.targets(rewards, next_states, next_actions)
+
+        for state, action, target in zip(states, actions, targets):
+
+            # Zeroing the gradients
+            self.optimiser.zero_grad()
+
+            state = self.tensorise(state)
+
+            q = torch.gather(self.model(state), dim=1, index=self.tensorise(action).unsqueeze(1))
+
+            loss = self.criterion(q, self.tensorise(target))
+            loss.backward(retain_graph=True)
+
+            if self.use_eligibility:
+                self.optimiser.step(loss)
+            else:
+                self.optimiser.step()
+
+    def single_batch_update(self, states, actions, rewards, next_states, next_actions):
+        """
+        Performs a gradient descent step on the model.
+
+        Args:
+            states (np.array): The representation for the state.
+            actions (np.array): The action taken.
+            rewards (np.array): The reward.
+            next_states (np.array): The representation for the next state.
+            next_actions (np.array): The next actions.
+        """
+
+        # Resetting the networks.
+        self.reset()
+
+        targets = self.targets(rewards, next_states, next_actions)
 
         for state, action, target in zip(states, actions, targets):
 

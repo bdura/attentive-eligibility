@@ -331,7 +331,11 @@ class Environment(BaseEnvironment):
                 episode.push(transition)
 
             elif training:
-                target = self.agent.target(transition.reward, transition.next_state, transition.next_action)
+                # TODO: check the validity of the terminal state
+                if done and False: # We make sure this is not called.
+                    target = np.zeros(1)
+                else:
+                    target = self.agent.target(transition.reward, transition.next_state, transition.next_action)
                 self.agent.update(transition.state, transition.action, target)
 
             full_return += reward
@@ -433,6 +437,39 @@ class Environment(BaseEnvironment):
 
         return training_return, testing_return
 
+    def get_batch(self, episodes):
+        """
+        Performs a gradient descent on a batch of episodes.
+
+        Args:
+            episodes (list): A list of episodes to train on.
+        """
+
+        length = np.min([len(episode) for episode in episodes])
+
+        states = []
+        actions = []
+        rewards = []
+        next_states = []
+        next_actions = []
+
+        for episode in episodes:
+            s, a, r, ns, na = episode.output(length=length)
+
+            states.append(s)
+            actions.append(a)
+            rewards.append(r)
+            next_states.append(ns)
+            next_actions.append(na)
+
+        states = np.stack(states).swapaxes(0, 1)
+        actions = np.stack(actions).swapaxes(0, 1)
+        rewards = np.stack(rewards).swapaxes(0, 1)
+        next_states = np.stack(next_states).swapaxes(0, 1)
+        next_actions = np.stack(next_actions).swapaxes(0, 1)
+
+        return states, actions, rewards, next_states, next_actions
+
     def batch(self, batch_size=20):
         """
         Performs a gradient descent on a batch of episodes.
@@ -447,27 +484,9 @@ class Environment(BaseEnvironment):
 
         episodes = buffer.sample(batch_size)
 
-        length = np.min([len(episode) for episode in buffer.memory])
+        states, actions, rewards, next_states, next_actions = self.get_batch(episodes)
 
-        states = []
-        actions = []
-        rewards = []
-        next_states = []
-
-        for episode in episodes:
-            s, a, r, n = episode.output(length=length)
-
-            states.append(s)
-            actions.append(a)
-            rewards.append(r)
-            next_states.append(n)
-
-        states = np.stack(states).swapaxes(0, 1)
-        actions = np.stack(actions).swapaxes(0, 1)
-        rewards = np.stack(rewards).swapaxes(0, 1)
-        next_states = np.stack(next_states).swapaxes(0, 1)
-
-        self.agent.batch_update(states, actions, rewards, next_states)
+        self.agent.batch_update(states, actions, rewards, next_states, next_actions)
 
     def train(self, segments=100, episodes=100):
         """
@@ -826,6 +845,54 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
         else:
             raise Exception("No such method (must be vector, tiling, one_hot_encoding or mixed, for the " +
                             "OverSimplified environment)")
+
+
+class BatchedEnvironment(Environment):
+
+    def __init__(self, environment_name, agent, seed=None, verbose=True, max_steps=200, slack=None, capacity=10000,
+                 representation_method='observation', n_tilings=1, n_bins=10, use_double_learning=True,
+                 use_replay_memory=True, batch_size=1):
+
+        environments = [gym.make(environment_name) for _ in range(batch_size)]
+
+        self.batch_size = batch_size
+
+        self.agent = agent
+
+        self.environments = [
+            Environment(environment=environment, agent=agent, seed=seed, verbose=verbose,
+                        max_steps=max_steps, slack=slack, capacity=capacity,
+                        representation_method=representation_method, n_tilings=n_tilings,
+                        n_bins=n_bins, use_double_learning=use_double_learning,
+                        use_replay_memory=use_replay_memory)
+            for environment in environments
+        ]
+
+    def batch_exploration(self):
+        done = False
+        full_return = 0.
+
+        counter = 0
+        while not done and counter < self.max_steps:
+
+            states = []
+            actions = []
+            rewards = []
+            next_states = []
+            next_actions = []
+
+            for environment in self.environments:
+
+                done, reward, transition = environment.explore()
+
+                rewards.append(reward)
+                states.append(transition.state)
+                actions.append(transition.action)
+                next_states.append(transition.next_state)
+                next_actions.append(transition.next_action)
+
+
+
 
 
 if __name__ == '__main__':
