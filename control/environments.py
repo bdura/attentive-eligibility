@@ -49,7 +49,7 @@ class Environment(BaseEnvironment):
         if type(environment.observation_space) is gym.spaces.discrete.Discrete:
             self.obs_dim = 1
             self.min_obs = 0
-            self.max_obs = environment.observation_space.n
+            self.max_obs = environment.observation_space.n - 1
 
         elif type(environment.observation_space) is gym.spaces.box.Box:
             self.obs_dim = environment.observation_space.shape[0]

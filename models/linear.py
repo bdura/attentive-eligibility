@@ -20,7 +20,7 @@ class Linear(nn.Module):
 
         self.name = 'Linear'
 
-        self.layer = nn.Linear(input_dimension, n_actions)
+        self.layer = nn.Linear(input_dimension, n_actions, bias=False)
 
     def get_config(self):
 
