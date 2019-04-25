@@ -331,8 +331,7 @@ class Environment(BaseEnvironment):
                 episode.push(transition)
 
             elif training:
-                # TODO: check the validity of the terminal state
-                if done:  # We make sure this is not called.
+                if done:
                     target = reward * np.ones(1)
                 else:
                     target = self.agent.target(transition.reward, transition.next_state, transition.next_action)
