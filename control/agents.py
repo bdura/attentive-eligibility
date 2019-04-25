@@ -118,7 +118,7 @@ class DQNAgent(BaseAgent):
                 actions = self.model(state)
 
             for i in range(state.size()[0]):
-                if np.argmax(state[i, :]) == self.terminal_state:
+                if torch.argmax(state[i, :]) == self.terminal_state:
                     actions[i, :] = torch.zeros(actions[i, :].size())
 
             # Remove the batch dimension
@@ -186,15 +186,14 @@ class DQNAgent(BaseAgent):
             )
 
             # target = reward.reshape(-1, 1) + self.gamma * q[action]
-            # target = reward.reshape(-1, 1) + self.gamma * q[action] * end.reshape(-1, 1)
+
             # for i in range(100):
             #     if reward[i] == 20:
             #         print(np.argmax(next_state[i]))
             #         print(reward[i])
             #         print(q[i])
             #         print(q[action])
-                    # print(target[i])
-                    # print(q)
+            #         print(target[i])
                     # print()
 
 
