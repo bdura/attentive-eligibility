@@ -170,27 +170,26 @@ class DQNAgent(BaseAgent):
 
         q = self.q(next_state)
 
-        probability = self.boltzmann(q)
-
         if self.algorithm == 'sarsa':
+            probability = self.boltzmann(q)
             action = self.sample_action(probability)
 
-            target = np.stack(
-                [reward[i] + self.gamma * q[i][action[i]] * np.ones(self.n_actions)
-                 for i in range(len(next_state))]
-            )
+            target = torch.Tensor(
+                [reward[i] + self.gamma * q[i][action[i]] for i in range(len(next_state))]
+            ).reshape(-1, 1)
 
         elif self.algorithm == 'expsarsa':
-            target = np.stack(
-                [reward[i] + self.gamma * (probability[i] @ q[i].T) * np.ones(self.n_actions)
-                 for i in range(len(next_state))]
-            )
+            probability = self.boltzmann(q)
+
+            target = torch.Tensor(
+                [reward[i] + self.gamma * (probability[i] @ q[i].T) for i in range(len(next_state))]
+            ).reshape(-1, 1)
 
         elif self.algorithm == 'qlearning':
-            target = np.stack(
-                [reward[i] + self.gamma * q[i].max() * np.ones(self.n_actions)
-                 for i in range(len(next_state))]
-            )
+            target = torch.Tensor(
+                [reward[i] + self.gamma * q[i].max() for i in range(len(next_state))]
+            ).reshape(-1, 1)
+
         else:
             raise Exception("Wrong agent.algorithm.")
 
