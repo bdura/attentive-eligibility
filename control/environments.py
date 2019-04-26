@@ -478,7 +478,7 @@ class Environment(BaseEnvironment):
 
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
             self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
-            
+
             if log_directory is not None:
                 writer.add_scalar("eval_return", mean_return, i)
 
@@ -533,7 +533,7 @@ class Environment(BaseEnvironment):
         """
 
         if self.representation_method == 'observation':
-            return torch.Tensor([state])
+            return state
 
         elif self.representation_method == 'tiling':
             assert type(self.environment.observation_space) is gym.spaces.box.Box
@@ -573,11 +573,10 @@ class Environment(BaseEnvironment):
             int, dimension of the input.
         """
 
-        # if len(self.state_representation(self.environment.reset()).shape) == 0:
-        #     return 1
-        #
-        # else:
-        return self.state_representation(self.environment.reset()).shape[0]
+        if isinstance(self.state_representation(self.environment.reset()), np.int64):
+            return 1
+        else:
+            return self.state_representation(self.environment.reset()).shape[-1]
 
     def bytes_evolution_range(self, n_episodes_exploration=100, n_episodes_evaluation=100):
         """
