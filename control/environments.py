@@ -474,11 +474,11 @@ class Environment(BaseEnvironment):
                 writer.add_scalar("train_return", mean_return_train, i)
 
             self.agent.eval()
-            returns_eval, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)])
-            mean_return_eval, mean_steps = returns_eval.mean(axis=0), steps.mean(axis=0)
+            returns_eval = np.array([self.evaluation_episode()[0] for _ in range(num_evaluation)])
+            mean_return_eval = returns_eval.mean(axis=0)
 
-            self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, mean_steps))
-            self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, mean_steps))
+            self.notify('>> Evaluation return : {:.2f}'.format(mean_return_eval))
+            self.print('>> Evaluation return : {:.2f}'.format(mean_return_eval))
 
             total_returns_train.extend(returns_train)
             total_returns_eval.extend(returns_eval)
