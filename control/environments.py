@@ -502,6 +502,7 @@ class Environment(BaseEnvironment):
                 plt.figure(),
                 plt.plot(total_returns_train, label='Mean training return')
                 plt.plot(total_returns_eval, label='Mean evaluation return')
+                plt.legend()
                 plt.show()
 
             if now / (i + 1) * (i + 2) > wall_time * .95:
