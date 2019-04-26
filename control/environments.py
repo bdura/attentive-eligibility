@@ -5,6 +5,7 @@ import json
 
 import torch
 import gym
+import matplotlib.pyplot as plt
 
 try:
     from tensorboardX import SummaryWriter
@@ -180,7 +181,7 @@ class Environment(BaseEnvironment):
 
         s, r, d, i = self.environment.step(action)
 
-        if d and r == self.max_reward:
+        if self.max_reward is not None and d and r == self.max_reward:
             s = self.max_obs
 
         s = self.state_representation(s)
@@ -442,7 +443,7 @@ class Environment(BaseEnvironment):
         return np.array(returns)
 
     def run(self, epochs=10, segments=10, episodes=50, wall_time=10, num_evaluation=200, batch_size=100,
-            save_directory=None, log_directory=None):
+            save_directory=None, log_directory=None, temp_decay=1., display_return_curve=False):
         """
         Run a full training of the agent in the environment.
 
@@ -454,6 +455,9 @@ class Environment(BaseEnvironment):
             save_directory: str, directory where to save the environment.
         """
 
+        total_returns_train, total_returns_eval = [], []
+        temp_old = self.agent.temperature
+
         if log_directory is not None:
             path = "../logs/" + log_directory + "/"
             os.mkdir(path)
@@ -464,32 +468,53 @@ class Environment(BaseEnvironment):
         t0 = time.time()
 
         for i in range(epochs):
+            print("Epoch {}/{}".format(i + 1, epochs))
 
-            returns = self.train(segments, episodes, batch_size).mean(axis=0)[0]
+            mean_return_train = self.train(segments, episodes, batch_size).mean(axis=0)[0]
 
-            self.notify('>> Training return : {:.2f}'.format(returns))
-            self.print('>> Training return : {:.2f}'.format(returns))
+            self.notify('>> Training return : {:.2f}'.format(mean_return_train))
+            self.print('>> Training return : {:.2f}'.format(mean_return_train))
 
             if log_directory is not None:
-                writer.add_scalar("train_return", returns, i)
+                writer.add_scalar("train_return", mean_return_train, i)
+
             self.agent.eval()
-            mean_return, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)]).mean(axis=0)
 
-            self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
-            self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
+            mean_return_eval, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)]).mean(axis=0)
+
+            self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, steps))
+            self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, steps))
+
+            total_returns_train.append(mean_return_train)
+            total_returns_eval.append(mean_return_eval)
 
             if log_directory is not None:
-                writer.add_scalar("eval_return", mean_return, i)
+                writer.add_scalar("eval_return", mean_return_eval, i)
 
             if save_directory is not None:
                 self.agent.save(save_directory)
+                np.save(save_directory + '/training.npy', total_returns_train)
+                np.save(save_directory + '/evaluation.npy', total_returns_eval)
 
             now = (time.time() - t0) / 3600
+
+            self.agent.temperature *= temp_decay
+
+            if display_return_curve and (i + 1) * 10 % epochs == 0:
+                plt.figure(),
+                plt.plot(total_returns_train, label='Mean training return')
+                plt.plot(total_returns_eval, label='Mean evaluation return')
+                plt.legend()
+                plt.show()
 
             if now / (i + 1) * (i + 2) > wall_time * .95:
                 break
 
         self.notify('Training ended.')
+
+        self.agent.temperature = temp_old
+
+        return total_returns_train, total_returns_eval
 
     # TODO: debug
     def save(self, directory):
