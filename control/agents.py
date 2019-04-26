@@ -117,9 +117,10 @@ class DQNAgent(BaseAgent):
             else:
                 actions = self.model(state)
 
-            for i in range(state.size()[0]):
-                if torch.argmax(state[i, :]) == self.terminal_state:
-                    actions[i, :] = torch.zeros(actions[i, :].size())
+            if self.terminal_state is not None:
+                for i in range(state.size()[0]):
+                    if torch.argmax(state[i, :]) == self.terminal_state:
+                        actions[i, :] = torch.zeros(actions[i, :].size())
 
             # Remove the batch dimension
             if squeezed:
