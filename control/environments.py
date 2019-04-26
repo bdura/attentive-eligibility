@@ -5,7 +5,10 @@ import json
 
 import torch
 import gym
-from tensorboardX import SummaryWriter
+try:
+    from tensorboardX import SummaryWriter
+except ModuleNotFoundError:
+    pass
 from control.utils import softmax, tiling, one_hot_encoding, BaseEnvironment
 from control.utils import Episode, ReplayMemory, Transition
 
@@ -533,7 +536,10 @@ class Environment(BaseEnvironment):
         """
 
         if self.representation_method == 'observation':
-            return state
+            if isinstance(state, int) or isinstance(state, np.int64):
+                return np.asarray([state], dtype=float)
+            else:
+                return state
 
         elif self.representation_method == 'tiling':
             assert type(self.environment.observation_space) is gym.spaces.box.Box
@@ -573,10 +579,7 @@ class Environment(BaseEnvironment):
             int, dimension of the input.
         """
 
-        if isinstance(self.state_representation(self.environment.reset()), np.int64):
-            return 1
-        else:
-            return self.state_representation(self.environment.reset()).shape[-1]
+        return self.state_representation(self.environment.reset()).shape[-1]
 
     def bytes_evolution_range(self, n_episodes_exploration=100, n_episodes_evaluation=100):
         """
