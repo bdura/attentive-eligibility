@@ -16,7 +16,7 @@ class DQNAgent(BaseAgent):
     name = 'DQNAgent'
 
     def __init__(self, model, optimiser, n_actions, gamma=.9, temperature=1, algorithm='expsarsa',
-                 use_eligibility=False):
+                 use_eligibility=False, use_double_learning=True, terminal_state=None):
         """
         Initialises the object.
 
@@ -33,8 +33,13 @@ class DQNAgent(BaseAgent):
         self.model = model.to(self.device)
         self.fixed = copy.deepcopy(self.model).eval()
 
-        self.criterion = nn.SmoothL1Loss()
+        # self.criterion = nn.SmoothL1Loss()
+        self.criterion = nn.MSELoss()
         self.optimiser = optimiser
+
+        self.use_double_learning = use_double_learning
+
+        self.terminal_state = terminal_state
 
     def get_config(self):
         """
@@ -107,7 +112,14 @@ class DQNAgent(BaseAgent):
             if squeezed:
                 state = state.unsqueeze(0)
 
-            actions = self.fixed(state)
+            if self.use_double_learning:
+                actions = self.fixed(state)
+            else:
+                actions = self.model(state)
+
+            for i in range(state.size()[0]):
+                if torch.argmax(state[i, :]) == self.terminal_state:
+                    actions[i, :] = torch.zeros(actions[i, :].size())
 
             # Remove the batch dimension
             if squeezed:
@@ -162,15 +174,36 @@ class DQNAgent(BaseAgent):
 
         probability = self.boltzmann(q)
 
+        # end = np.asarray([0. if i in np.where(reward.reshape(-1, 1) == self.end_reward)[0]
+        #                   else 1. for i in range(len(next_state))])
+
         if self.algorithm == 'sarsa':
             action = self.sample_action(probability)
-            target = reward.reshape(-1, 1) + self.gamma * q[action]
+
+            target = np.stack(
+                [reward[i] + self.gamma * q[i][action[i]] * np.ones(self.n_actions)
+                 for i in range(len(next_state))]
+            )
+
+            # target = reward.reshape(-1, 1) + self.gamma * q[action]
+
+            # for i in range(100):
+            #     if reward[i] == 20:
+            #         print(np.argmax(next_state[i]))
+            #         print(reward[i])
+            #         print(q[i])
+            #         print(q[action])
+            #         print(target[i])
+                    # print()
+
 
         elif self.algorithm == 'expsarsa':
-            target = reward + self.gamma * probability @ q.T
+            target = reward + self.gamma * (probability @ q.T)
+            # target = reward + self.gamma * (probability @ q.T) * end
 
         else:
             target = reward + self.gamma * q.max(axis=1)
+            # target = reward + self.gamma * q.max(axis=1) * end
 
         return target
 
@@ -218,9 +251,16 @@ class DQNAgent(BaseAgent):
             self.optimiser.zero_grad()
 
             state = self.tensorise(state)
+            ###
+            # for i in range(100):
+            #     if np.argmax(state[i, :]) == torch.tensor(479):
+            #         print(self.model(state[i, :]))
+            #         print(target[i])
+            #         print(action[i])
+            #         break
+            ###
 
             q = torch.gather(self.model(state), dim=1, index=self.tensorise(action).unsqueeze(1))
-
             loss = self.criterion(q, self.tensorise(target))
             loss.backward(retain_graph=True)
 

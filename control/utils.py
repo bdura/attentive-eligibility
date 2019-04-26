@@ -295,7 +295,8 @@ class ReplayMemory(object):
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size):
-        return np.random.choice(self.memory, size=batch_size)
+        # return np.random.choice(self.memory, size=batch_size)
+        return np.random.choice(self.memory, size=batch_size, replace=False)
 
     def __len__(self):
         return len(self.memory)

@@ -5,7 +5,7 @@ import json
 
 import torch
 import gym
-
+from tensorboardX import SummaryWriter
 from control.utils import softmax, tiling, one_hot_encoding, BaseEnvironment
 from control.utils import Episode, ReplayMemory, Transition
 
@@ -55,6 +55,11 @@ class Environment(BaseEnvironment):
             self.obs_dim = environment.observation_space.shape[0]
             self.min_obs = min(environment.observation_space.low)
             self.max_obs = max(environment.observation_space.high) + 1
+
+        if environment.unwrapped.spec.id == 'Taxi-v2':
+            self.max_reward = 20
+        else:
+            self.max_reward = None
 
     def get_config(self):
         """
@@ -171,6 +176,9 @@ class Environment(BaseEnvironment):
 
         s, r, d, i = self.environment.step(action)
 
+        if d and r == self.max_reward:
+            s = self.max_obs
+
         s = self.state_representation(s)
 
         try:
@@ -251,6 +259,7 @@ class Environment(BaseEnvironment):
 
         if render:
             self.environment.render()
+            print("State: {}".format(np.argmax(self.state)))
             time.sleep(0.01)
 
         step = self.evaluate
@@ -262,12 +271,13 @@ class Environment(BaseEnvironment):
         counter = 0
         while not done and counter < self.max_steps:
             done, reward = step()
-            #full_return = self.agent.gamma * full_return + reward
+            # full_return = self.agent.gamma * full_return + reward
             full_return += reward
             counter += 1
 
             if render:
                 self.environment.render()
+                print("State: {}".format(np.argmax(self.state)))
                 time.sleep(0.01)
 
             if return_observations:
@@ -306,6 +316,7 @@ class Environment(BaseEnvironment):
 
         if render:
             self.environment.render()
+            print("State: {}".format(np.argmax(self.state)))
             time.sleep(0.01)
 
         done = False
@@ -317,12 +328,22 @@ class Environment(BaseEnvironment):
 
             episode.push(transition)
 
-            #full_return = self.agent.gamma * full_return + reward
+            # full_return = self.agent.gamma * full_return + reward
             full_return += reward
             counter += 1
-
+            ###
+            # if transition.reward == -1 and transition.action in [4, 5]:
+            #     print(np.argmax(self.state))
+            #     self.environment.render()
+            #     render=True
+            ###
+            ###
+            # if np.argmax(transition.state) == 479:
+            #     self.environment.render()
+            ###
             if render:
                 self.environment.render()
+                print("State: {}".format(np.argmax(self.state)))
                 time.sleep(0.01)
 
             if return_observations:
@@ -353,7 +374,8 @@ class Environment(BaseEnvironment):
 
         # self.agent.commit()
 
-        training_return = np.mean([self.exploration_episode()[0] for _ in range(episodes)])
+        training_return = torch.mean(torch.Tensor([self.exploration_episode()[0] for _ in range(episodes)]))
+
         testing_return = self.evaluation_episode()[0]
 
         return training_return, testing_return
@@ -423,7 +445,7 @@ class Environment(BaseEnvironment):
         return np.array(returns)
 
     def run(self, epochs=10, segments=10, episodes=50, wall_time=10, num_evaluation=200, batch_size=100,
-            save_directory=None):
+            save_directory=None, log_directory=None):
         """
         Run a full training of the agent in the environment.
 
@@ -434,6 +456,9 @@ class Environment(BaseEnvironment):
             wall_time: float, time limit of the run.
             save_directory: str, directory where to save the environment.
         """
+
+        if log_directory is not None:
+            writer = SummaryWriter("../logs/" + log_directory + "/")
 
         self.notify('Beginning training')
 
@@ -446,13 +471,19 @@ class Environment(BaseEnvironment):
             self.notify('>> Training return : {:.2f}'.format(returns))
             self.print('>> Training return : {:.2f}'.format(returns))
 
+            if log_directory is not None:
+                writer.add_scalar("train_return", returns, i)
+
             mean_return, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)]).mean(axis=0)
 
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
             self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
+            
+            if log_directory is not None:
+                writer.add_scalar("eval_return", mean_return, i)
 
             if save_directory is not None:
-                self.save(save_directory)
+                self.agent.save(save_directory)
 
             now = (time.time() - t0) / 3600
 
@@ -502,7 +533,7 @@ class Environment(BaseEnvironment):
         """
 
         if self.representation_method == 'observation':
-            return state
+            return torch.Tensor([state])
 
         elif self.representation_method == 'tiling':
             assert type(self.environment.observation_space) is gym.spaces.box.Box
@@ -542,6 +573,10 @@ class Environment(BaseEnvironment):
             int, dimension of the input.
         """
 
+        # if len(self.state_representation(self.environment.reset()).shape) == 0:
+        #     return 1
+        #
+        # else:
         return self.state_representation(self.environment.reset()).shape[0]
 
     def bytes_evolution_range(self, n_episodes_exploration=100, n_episodes_evaluation=100):
