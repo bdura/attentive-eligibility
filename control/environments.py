@@ -5,6 +5,7 @@ import json
 
 import torch
 import gym
+
 try:
     from tensorboardX import SummaryWriter
 except ModuleNotFoundError:
@@ -464,8 +465,7 @@ class Environment(BaseEnvironment):
 
         for i in range(epochs):
 
-            returns_train = self.train(segments, episodes, batch_size)[0]
-            mean_return_train = returns_train.mean(axis=0)
+            mean_return_train = self.train(segments, episodes, batch_size).mean(axis=0)[0]
 
             self.notify('>> Training return : {:.2f}'.format(mean_return_train))
             self.print('>> Training return : {:.2f}'.format(mean_return_train))
@@ -474,14 +474,14 @@ class Environment(BaseEnvironment):
                 writer.add_scalar("train_return", mean_return_train, i)
 
             self.agent.eval()
-            returns_eval = np.array([self.evaluation_episode()[0] for _ in range(num_evaluation)])
-            mean_return_eval = returns_eval.mean(axis=0)
 
-            self.notify('>> Evaluation return : {:.2f}'.format(mean_return_eval))
-            self.print('>> Evaluation return : {:.2f}'.format(mean_return_eval))
+            mean_return_eval, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)]).mean(axis=0)
 
-            total_returns_train.extend(returns_train)
-            total_returns_eval.extend(returns_eval)
+            self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, steps))
+            self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, steps))
+
+            total_returns_train.append(mean_return_train)
+            total_returns_eval.append(mean_return_eval)
 
             if log_directory is not None:
                 writer.add_scalar("eval_return", mean_return_eval, i)
