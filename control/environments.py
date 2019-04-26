@@ -5,6 +5,7 @@ import json
 
 import torch
 import gym
+import matplotlib.pyplot as plt
 
 try:
     from tensorboardX import SummaryWriter
@@ -442,7 +443,7 @@ class Environment(BaseEnvironment):
         return np.array(returns)
 
     def run(self, epochs=10, segments=10, episodes=50, wall_time=10, num_evaluation=200, batch_size=100,
-            save_directory=None, log_directory=None):
+            save_directory=None, log_directory=None, temp_decay=1., display_return_curve=False):
         """
         Run a full training of the agent in the environment.
 
@@ -455,6 +456,7 @@ class Environment(BaseEnvironment):
         """
 
         total_returns_train, total_returns_eval = [], []
+        temp_old = self.agent.temperature
 
         if log_directory is not None:
             writer = SummaryWriter("../logs/" + log_directory + "/")
@@ -464,6 +466,7 @@ class Environment(BaseEnvironment):
         t0 = time.time()
 
         for i in range(epochs):
+            print("Epoch {}/{}".format(i + 1, epochs))
 
             mean_return_train = self.train(segments, episodes, batch_size).mean(axis=0)[0]
 
@@ -493,10 +496,20 @@ class Environment(BaseEnvironment):
 
             now = (time.time() - t0) / 3600
 
+            self.agent.temperature *= temp_decay
+
+            if display_return_curve and (i + 1) * 10 % epochs == 0:
+                plt.figure(),
+                plt.plot(total_returns_train, label='Mean training return')
+                plt.plot(total_returns_eval, label='Mean evaluation return')
+                plt.show()
+
             if now / (i + 1) * (i + 2) > wall_time * .95:
                 break
 
         self.notify('Training ended.')
+
+        self.agent.temperature = temp_old
 
         return total_returns_train, total_returns_eval
 

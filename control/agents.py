@@ -181,14 +181,18 @@ class DQNAgent(BaseAgent):
             )
 
         elif self.algorithm == 'expsarsa':
-            # TODO: correct
-            target = reward + self.gamma * (probability @ q.T)
-            # target = reward + self.gamma * (probability @ q.T) * end
+            target = np.stack(
+                [reward[i] + self.gamma * (probability[i] @ q[i].T) * np.ones(self.n_actions)
+                 for i in range(len(next_state))]
+            )
 
+        elif self.algorithm == 'qlearning':
+            target = np.stack(
+                [reward[i] + self.gamma * q[i].max() * np.ones(self.n_actions)
+                 for i in range(len(next_state))]
+            )
         else:
-            # TODO: correct
-            target = reward + self.gamma * q.max(axis=1)
-            # target = reward + self.gamma * q.max(axis=1) * end
+            raise Exception("Wrong agent.algorithm.")
 
         return target
 
