@@ -5,6 +5,7 @@ import json
 
 import torch
 import gym
+
 try:
     from tensorboardX import SummaryWriter
 except ModuleNotFoundError:
@@ -463,7 +464,9 @@ class Environment(BaseEnvironment):
         """
 
         if log_directory is not None:
-            writer = SummaryWriter("../logs/" + log_directory + "/")
+            path = "../logs/" + log_directory + "/"
+            os.mkdir(path)
+            writer = SummaryWriter(path)
 
         self.notify('Beginning training')
 
@@ -795,7 +798,7 @@ import control.agents as agents
 
 # Debug
 if __name__ == '__main__':
-    env_name = 'Breakout-ram-v0'
+    env_name = 'Taxi-v2'
 
     environment = Environment(
         environment=gym.make(env_name),
@@ -803,8 +806,8 @@ if __name__ == '__main__':
         verbose=True,
         max_steps=200,
         capacity=500,
-        # representation_method='one_hot_encoding',
-        representation_method='observation',
+        representation_method='one_hot_encoding',
+        # representation_method='observation',
     )
 
     model_mlp = mlps.MLP(
@@ -824,18 +827,18 @@ if __name__ == '__main__':
         algorithm='sarsa',
         n_actions=environment.n_actions,
         terminal_state=environment.max_obs,
-        use_double_learning=False
+        use_double_learning=True
     )
 
     environment.agent = agent
 
     environment.run(
-        epochs=5,
-        segments=50,
+        epochs=3,
+        segments=2,
         episodes=10,
         wall_time=2,
         num_evaluation=20,
-        batch_size=51,
+        batch_size=1000,
         # save_directory='../saved/taxi/mlp',
         # log_directory='mlp_obersvations_taxi',
     )
