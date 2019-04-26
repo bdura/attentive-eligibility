@@ -467,6 +467,11 @@ class Environment(BaseEnvironment):
                 os.mkdir(path)
             writer = SummaryWriter(path)
 
+        if save_directory is not None:
+            save_directory = save_directory + '/'
+            if not os.path.exists(save_directory):
+                os.mkdir(save_directory)
+
         self.notify('Beginning training')
 
         t0 = time.time()
@@ -502,9 +507,9 @@ class Environment(BaseEnvironment):
 
             if save_directory is not None:
                 self.agent.save(save_directory)
-                np.save(save_directory + '/training.npy', total_returns_train)
-                np.save(save_directory + '/evaluation.npy', total_returns_eval)
-                np.save(save_directory + '/train_losses.npy', total_losses_train)
+                np.save(save_directory + 'training.npy', total_returns_train)
+                np.save(save_directory + 'evaluation.npy', total_returns_eval)
+                np.save(save_directory + 'train_losses.npy', total_losses_train)
 
             now = (time.time() - t0) / 3600
 
@@ -820,57 +825,3 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
         else:
             raise Exception("No such method (must be vector, tiling, one_hot_encoding or mixed, for the " +
                             "OverSimplified environment)")
-
-
-import models.rnn as rnns
-import models.mlp as mlps
-import models.linear as linears
-import control.agents as agents
-
-# Debug
-if __name__ == '__main__':
-    env_name = 'Taxi-v2'
-
-    environment = Environment(
-        environment=gym.make(env_name),
-        agent=None,
-        verbose=True,
-        max_steps=200,
-        capacity=500,
-        representation_method='one_hot_encoding',
-        # representation_method='observation',
-    )
-
-    model_mlp = mlps.MLP(
-        input_dimension=environment.get_input_dimension(),
-        hidden_dimension=100,
-        n_hidden_layers=1,
-        n_actions=environment.n_actions,
-        dropout=0.
-    )
-
-    model = model_mlp
-    agent = agents.DQNAgent(
-        model=model,
-        optimiser=torch.optim.Adam(model.parameters(), lr=1e-3),
-        gamma=.99,
-        temperature=3.,
-        algorithm='qlearning',
-        n_actions=environment.n_actions,
-        terminal_state=environment.max_obs,
-        use_double_learning=True
-    )
-
-    environment.agent = agent
-
-    environment.run(
-        epochs=50,
-        segments=10,
-        episodes=10,
-        wall_time=2,
-        num_evaluation=50,
-        batch_size=100,
-        # save_directory='../saved/taxi/mlp',
-        log_directory='mlp_observations_taxi',
-        display_return_curve=True
-    )
