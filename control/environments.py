@@ -336,16 +336,7 @@ class Environment(BaseEnvironment):
             # full_return = self.agent.gamma * full_return + reward
             full_return += reward
             counter += 1
-            ###
-            # if transition.reward == -1 and transition.action in [4, 5]:
-            #     print(np.argmax(self.state))
-            #     self.environment.render()
-            #     render=True
-            ###
-            ###
-            # if np.argmax(transition.state) == 479:
-            #     self.environment.render()
-            ###
+
             if render:
                 self.environment.render()
                 print("State: {}".format(np.argmax(self.state)))
