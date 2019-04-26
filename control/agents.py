@@ -35,7 +35,7 @@ class DQNAgent(BaseAgent):
         # self.criterion = nn.SmoothL1Loss()
         self.criterion = nn.MSELoss()
         self.optimiser = optimiser
-        self.scheduler = ReduceLROnPlateau(self.optimiser, factor=0.2, patience=5, threshold=0.1)
+        self.scheduler = ReduceLROnPlateau(self.optimiser, factor=0.2, patience=5, threshold=0.1, verbose=True)
 
         self.use_double_learning = use_double_learning
 
@@ -249,7 +249,7 @@ class DQNAgent(BaseAgent):
 
             else:
                 self.optimiser.step()
-                
+
         return loss.item()
 
     def reset(self):

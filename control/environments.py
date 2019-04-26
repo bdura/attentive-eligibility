@@ -476,7 +476,7 @@ class Environment(BaseEnvironment):
 
             returns, losses = self.train(segments, episodes, batch_size)
             mean_return_train, epoch_loss = returns.mean(axis=0)[0], losses.mean()
-            agent.scheduler.step(epoch_loss)
+            self.agent.scheduler.step(epoch_loss)
 
             self.notify('>> Training return : {:.2f}'.format(mean_return_train))
             self.print('>> Training return : {:.2f}'.format(mean_return_train))
@@ -514,6 +514,11 @@ class Environment(BaseEnvironment):
                 plt.figure(),
                 plt.plot(total_returns_train, label='Mean training return')
                 plt.plot(total_returns_eval, label='Mean evaluation return')
+                plt.legend()
+                plt.show()
+
+                plt.figure()
+                plt.plot(total_losses_train, label='Epoch training loss')
                 plt.legend()
                 plt.show()
 
