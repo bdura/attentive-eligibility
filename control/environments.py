@@ -488,6 +488,8 @@ class Environment(BaseEnvironment):
 
             if save_directory is not None:
                 self.agent.save(save_directory)
+                np.save(save_directory + '/training.py', total_returns_train)
+                np.save(save_directory + '/evaluation.py', total_returns_eval)
 
             now = (time.time() - t0) / 3600
 
