@@ -106,6 +106,7 @@ class DQNAgent(BaseAgent):
 
             state = self.tensorise(state)
 
+
             # Add a batch dimension
             squeezed = len(state.size()) == 1
 
