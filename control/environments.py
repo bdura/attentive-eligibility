@@ -443,7 +443,7 @@ class Environment(BaseEnvironment):
         return np.array(returns)
 
     def run(self, epochs=10, segments=10, episodes=50, wall_time=10, num_evaluation=200, batch_size=100,
-            save_directory=None, log_directory=None, lr_decay= 1., temp_decay=1., display_return_curve=False):
+            save_directory=None, log_directory=None, temp_decay=1., display_return_curve=False):
         """
         Run a full training of the agent in the environment.
 
@@ -456,7 +456,7 @@ class Environment(BaseEnvironment):
         """
 
         total_returns_train, total_returns_eval = [], []
-        lr_old, temp_old = self.agent.optimiser.lr, self.agent.temperature
+        temp_old = self.agent.temperature
 
         if log_directory is not None:
             writer = SummaryWriter("../logs/" + log_directory + "/")
@@ -496,7 +496,6 @@ class Environment(BaseEnvironment):
 
             now = (time.time() - t0) / 3600
 
-            self.agent.optimiser.lr *= lr_decay
             self.agent.temperature *= temp_decay
 
             if display_return_curve and (i + 1) * 10 % epochs == 0:
@@ -510,7 +509,7 @@ class Environment(BaseEnvironment):
 
         self.notify('Training ended.')
 
-        self.agent.optimiser.lr, self.agent.temperature = lr_old, temp_old
+        self.agent.temperature = temp_old
 
         return total_returns_train, total_returns_eval
 
