@@ -151,9 +151,6 @@ class DQNAgent(BaseAgent):
         loss = self.criterion(q, self.tensorise(target))
         loss.backward(retain_graph=True)
 
-        # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-        # torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
-
         if self.use_eligibility:
             self.optimiser.step(loss)
         else:
@@ -175,9 +172,6 @@ class DQNAgent(BaseAgent):
 
         probability = self.boltzmann(q)
 
-        # end = np.asarray([0. if i in np.where(reward.reshape(-1, 1) == self.end_reward)[0]
-        #                   else 1. for i in range(len(next_state))])
-
         if self.algorithm == 'sarsa':
             action = self.sample_action(probability)
 
@@ -186,23 +180,13 @@ class DQNAgent(BaseAgent):
                  for i in range(len(next_state))]
             )
 
-            # target = reward.reshape(-1, 1) + self.gamma * q[action]
-
-            # for i in range(100):
-            #     if reward[i] == 20:
-            #         print(np.argmax(next_state[i]))
-            #         print(reward[i])
-            #         print(q[i])
-            #         print(q[action])
-            #         print(target[i])
-            # print()
-
-
         elif self.algorithm == 'expsarsa':
+            # TODO: correct
             target = reward + self.gamma * (probability @ q.T)
             # target = reward + self.gamma * (probability @ q.T) * end
 
         else:
+            # TODO: correct
             target = reward + self.gamma * q.max(axis=1)
             # target = reward + self.gamma * q.max(axis=1) * end
 
@@ -252,21 +236,10 @@ class DQNAgent(BaseAgent):
             self.optimiser.zero_grad()
 
             state = self.tensorise(state)
-            ###
-            # for i in range(100):
-            #     if np.argmax(state[i, :]) == torch.tensor(479):
-            #         print(self.model(state[i, :]))
-            #         print(target[i])
-            #         print(action[i])
-            #         break
-            ###
 
             q = torch.gather(self.model(state), dim=1, index=self.tensorise(action).unsqueeze(1))
             loss = self.criterion(q, self.tensorise(target))
             loss.backward(retain_graph=True)
-
-            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-            # torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.5)
 
             if self.use_eligibility:
                 self.optimiser.step(loss)

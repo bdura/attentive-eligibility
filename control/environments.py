@@ -179,7 +179,7 @@ class Environment(BaseEnvironment):
 
         s, r, d, i = self.environment.step(action)
 
-        if d and r == self.max_reward:
+        if self.max_reward is not None and d and r == self.max_reward:
             s = self.max_obs
 
         s = self.state_representation(s)
@@ -335,16 +335,7 @@ class Environment(BaseEnvironment):
             # full_return = self.agent.gamma * full_return + reward
             full_return += reward
             counter += 1
-            ###
-            # if transition.reward == -1 and transition.action in [4, 5]:
-            #     print(np.argmax(self.state))
-            #     self.environment.render()
-            #     render=True
-            ###
-            ###
-            # if np.argmax(transition.state) == 479:
-            #     self.environment.render()
-            ###
+
             if render:
                 self.environment.render()
                 print("State: {}".format(np.argmax(self.state)))
@@ -462,6 +453,8 @@ class Environment(BaseEnvironment):
             save_directory: str, directory where to save the environment.
         """
 
+        total_returns_train, total_returns_eval = [], []
+
         if log_directory is not None:
             writer = SummaryWriter("../logs/" + log_directory + "/")
 
@@ -478,11 +471,15 @@ class Environment(BaseEnvironment):
 
             if log_directory is not None:
                 writer.add_scalar("train_return", returns, i)
+
             self.agent.eval()
             mean_return, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)]).mean(axis=0)
 
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
             self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
+
+            total_returns_train.extend(returns)
+            total_returns_eval.extend(mean_return)
 
             if log_directory is not None:
                 writer.add_scalar("eval_return", mean_return, i)
@@ -496,6 +493,8 @@ class Environment(BaseEnvironment):
                 break
 
         self.notify('Training ended.')
+
+        return total_returns_train, total_returns_eval
 
     # TODO: debug
     def save(self, directory):
@@ -786,56 +785,3 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
         else:
             raise Exception("No such method (must be vector, tiling, one_hot_encoding or mixed, for the " +
                             "OverSimplified environment)")
-
-
-import models.rnn as rnns
-import models.mlp as mlps
-import models.linear as linears
-import control.agents as agents
-
-# Debug
-if __name__ == '__main__':
-    env_name = 'Breakout-ram-v0'
-
-    environment = Environment(
-        environment=gym.make(env_name),
-        agent=None,
-        verbose=True,
-        max_steps=200,
-        capacity=500,
-        # representation_method='one_hot_encoding',
-        representation_method='observation',
-    )
-
-    model_mlp = mlps.MLP(
-        input_dimension=environment.get_input_dimension(),
-        hidden_dimension=100,
-        n_hidden_layers=1,
-        n_actions=environment.n_actions,
-        dropout=0.
-    )
-
-    model = model_mlp
-    agent = agents.DQNAgent(
-        model=model,
-        optimiser=torch.optim.Adam(model.parameters(), lr=.001),
-        gamma=.99,
-        temperature=1,
-        algorithm='sarsa',
-        n_actions=environment.n_actions,
-        terminal_state=environment.max_obs,
-        use_double_learning=False
-    )
-
-    environment.agent = agent
-
-    environment.run(
-        epochs=5,
-        segments=50,
-        episodes=10,
-        wall_time=2,
-        num_evaluation=20,
-        batch_size=51,
-        # save_directory='../saved/taxi/mlp',
-        # log_directory='mlp_obersvations_taxi',
-    )
