@@ -464,25 +464,27 @@ class Environment(BaseEnvironment):
 
         for i in range(epochs):
 
-            returns = self.train(segments, episodes, batch_size).mean(axis=0)[0]
+            returns_train = self.train(segments, episodes, batch_size)[0]
+            mean_return_train = returns_train.mean(axis=0)
 
-            self.notify('>> Training return : {:.2f}'.format(returns))
-            self.print('>> Training return : {:.2f}'.format(returns))
+            self.notify('>> Training return : {:.2f}'.format(mean_return_train))
+            self.print('>> Training return : {:.2f}'.format(mean_return_train))
 
             if log_directory is not None:
-                writer.add_scalar("train_return", returns, i)
+                writer.add_scalar("train_return", mean_return_train, i)
 
             self.agent.eval()
-            mean_return, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)]).mean(axis=0)
+            returns_eval, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)])
+            mean_return_eval, mean_steps = returns_eval.mean(axis=0), steps.mean(axis=0)
 
-            self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
-            self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
+            self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, mean_steps))
+            self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, mean_steps))
 
-            total_returns_train.extend(returns)
-            total_returns_eval.extend(mean_return)
+            total_returns_train.extend(returns_train)
+            total_returns_eval.extend(returns_eval)
 
             if log_directory is not None:
-                writer.add_scalar("eval_return", mean_return, i)
+                writer.add_scalar("eval_return", mean_return_eval, i)
 
             if save_directory is not None:
                 self.agent.save(save_directory)
