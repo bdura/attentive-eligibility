@@ -106,7 +106,6 @@ class DQNAgent(BaseAgent):
 
             state = self.tensorise(state)
 
-
             # Add a batch dimension
             squeezed = len(state.size()) == 1
 
@@ -195,7 +194,7 @@ class DQNAgent(BaseAgent):
             #         print(q[i])
             #         print(q[action])
             #         print(target[i])
-                    # print()
+            # print()
 
 
         elif self.algorithm == 'expsarsa':

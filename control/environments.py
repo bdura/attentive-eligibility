@@ -217,7 +217,9 @@ class Environment(BaseEnvironment):
         s, r, d, i = self.step(self.action)
 
         # If there are ties, we might want to choose between actions at random
+
         p, q = self.boltzmann(s, return_q=True)
+
         a = self.sample_action(p)
 
         transition = Transition(self.state, self.action, r, s)
@@ -249,7 +251,6 @@ class Environment(BaseEnvironment):
             counter (int): The number of timesteps.
             observations (list): full observations of the states.
         """
-
         observations = []
 
         self.reset()
@@ -373,10 +374,11 @@ class Environment(BaseEnvironment):
         """
 
         # self.agent.commit()
-
+        self.agent.eval()
         training_return = torch.mean(torch.Tensor([self.exploration_episode()[0] for _ in range(episodes)]))
 
         testing_return = self.evaluation_episode()[0]
+        self.agent.train()
 
         return training_return, testing_return
 
@@ -428,7 +430,7 @@ class Environment(BaseEnvironment):
         Returns:
             returns (np.array): The mean return for each segment.
         """
-
+        self.agent.train()
         iterator = self.tqdm(range(segments), ascii=True, ncols=100)
 
         returns = []
@@ -473,7 +475,7 @@ class Environment(BaseEnvironment):
 
             if log_directory is not None:
                 writer.add_scalar("train_return", returns, i)
-
+            self.agent.eval()
             mean_return, steps = np.array([self.evaluation_episode() for _ in range(num_evaluation)]).mean(axis=0)
 
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return, steps))
@@ -781,3 +783,56 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
         else:
             raise Exception("No such method (must be vector, tiling, one_hot_encoding or mixed, for the " +
                             "OverSimplified environment)")
+
+
+import models.rnn as rnns
+import models.mlp as mlps
+import models.linear as linears
+import control.agents as agents
+
+# Debug
+if __name__ == '__main__':
+    env_name = 'Breakout-ram-v0'
+
+    environment = Environment(
+        environment=gym.make(env_name),
+        agent=None,
+        verbose=True,
+        max_steps=200,
+        capacity=500,
+        # representation_method='one_hot_encoding',
+        representation_method='observation',
+    )
+
+    model_mlp = mlps.MLP(
+        input_dimension=environment.get_input_dimension(),
+        hidden_dimension=100,
+        n_hidden_layers=1,
+        n_actions=environment.n_actions,
+        dropout=0.
+    )
+
+    model = model_mlp
+    agent = agents.DQNAgent(
+        model=model,
+        optimiser=torch.optim.Adam(model.parameters(), lr=.001),
+        gamma=.99,
+        temperature=1,
+        algorithm='sarsa',
+        n_actions=environment.n_actions,
+        terminal_state=environment.max_obs,
+        use_double_learning=False
+    )
+
+    environment.agent = agent
+
+    environment.run(
+        epochs=5,
+        segments=50,
+        episodes=10,
+        wall_time=2,
+        num_evaluation=20,
+        batch_size=51,
+        # save_directory='../saved/taxi/mlp',
+        # log_directory='mlp_obersvations_taxi',
+    )
