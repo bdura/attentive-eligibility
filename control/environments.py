@@ -831,6 +831,7 @@ import models.rnn as rnns
 import models.mlp as mlps
 import models.linear as linears
 import control.agents as agents
+import util.eligibility_optim as eligibility
 
 # Debug
 if __name__ == '__main__':
@@ -857,13 +858,14 @@ if __name__ == '__main__':
     model = model_mlp
     agent = agents.DQNAgent(
         model=model,
-        optimiser=torch.optim.Adam(model.parameters(), lr=3e-4),
+        optimiser=eligibility.EligibilitySGD(model.parameters(), lr=1e-3, gamma=0.99, lambd=0.9),
         gamma=.99,
         temperature=3.,
         algorithm='qlearning',
         n_actions=environment.n_actions,
         terminal_state=environment.max_obs,
-        use_double_learning=True
+        use_double_learning=True,
+        use_eligibility=True
     )
 
     environment.agent = agent

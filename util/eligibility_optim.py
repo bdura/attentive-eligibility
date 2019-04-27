@@ -5,13 +5,14 @@ from torch.optim.optimizer import Optimizer, required
 class EligibilitySGD(Optimizer):
     def __init__(self, params, lr=required, gamma=required, lambd=required):
         defaults = dict(lr=lr, gamma=gamma, lambd=lambd)
-        self.traces = (torch.zeros_like(p) for p in params)
+        self.traces = {}
         super(EligibilitySGD, self).__init__(params, defaults)
 
     def __setstate__(self, state):
         pass
 
     def step(self, loss):
+
         """Performs a single optimization step.
 
         Arguments:
@@ -25,16 +26,16 @@ class EligibilitySGD(Optimizer):
             gamma = group['gamma']
             lambd = group['lambd']
 
-        for p, e in zip(group['params'], self.traces):
+        for p in group['params']:
+            e = self.traces.get(p, torch.zeros_like(p))
             if p.grad is None:
                 continue
             d_p = p.grad.data
             decay = torch.mul(gamma, lambd)
             # update trace
-            e.add_(torch.mul(decay, e), d_p / (-2 * d_t))
-
-            factor = group['lr'] * d_t
+            self.traces[p] = torch.add(torch.mul(decay, e), d_p / (-2 * d_t))
+            factor = torch.mul(group['lr'], d_t)
             # update param
-            p.data.add_(torch.mul(factor, e))
+            p.data = torch.mul(self.traces[p], factor)
 
         return loss
