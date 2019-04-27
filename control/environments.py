@@ -857,7 +857,7 @@ if __name__ == '__main__':
     model = model_mlp
     agent = agents.DQNAgent(
         model=model,
-        optimiser=torch.optim.Adam(model.parameters(), lr=1e-3),
+        optimiser=torch.optim.Adam(model.parameters(), lr=3e-4),
         gamma=.99,
         temperature=3.,
         algorithm='qlearning',
@@ -869,7 +869,7 @@ if __name__ == '__main__':
     environment.agent = agent
 
     environment.run(
-        epochs=50,
+        epochs=100,
         segments=10,
         episodes=10,
         wall_time=2,

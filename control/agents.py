@@ -35,7 +35,7 @@ class DQNAgent(BaseAgent):
         # self.criterion = nn.SmoothL1Loss()
         self.criterion = nn.MSELoss()
         self.optimiser = optimiser
-        self.scheduler = MultiStepLR(self.optimiser, gamma=0.3, milestones=[5, 20, 40])
+        self.scheduler = MultiStepLR(self.optimiser, gamma=0.3, milestones=[10, 30, 60])
 
         self.use_double_learning = use_double_learning
 
