@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 
 from control.utils import BaseAgent
@@ -35,7 +35,7 @@ class DQNAgent(BaseAgent):
         # self.criterion = nn.SmoothL1Loss()
         self.criterion = nn.MSELoss()
         self.optimiser = optimiser
-        self.scheduler = ReduceLROnPlateau(self.optimiser, factor=0.2, patience=5, threshold=0.1, verbose=True)
+        self.scheduler = MultiStepLR(self.optimiser, gamma=0.3, milestones=[5, 20, 40])
 
         self.use_double_learning = use_double_learning
 
