@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-
+from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 
 from control.utils import BaseAgent
@@ -32,10 +32,10 @@ class DQNAgent(BaseAgent):
 
         self.model = model.to(self.device)
         self.fixed = copy.deepcopy(self.model).eval()
-
         # self.criterion = nn.SmoothL1Loss()
         self.criterion = nn.MSELoss()
         self.optimiser = optimiser
+        self.scheduler = MultiStepLR(self.optimiser, gamma=0.3, milestones=[10, 30, 60])
 
         self.use_double_learning = use_double_learning
 
@@ -246,8 +246,11 @@ class DQNAgent(BaseAgent):
 
             if self.use_eligibility:
                 self.optimiser.step(loss)
+
             else:
                 self.optimiser.step()
+
+        return loss.item()
 
     def reset(self):
         """Resets the model."""

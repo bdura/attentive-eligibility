@@ -412,7 +412,9 @@ class Environment(BaseEnvironment):
         rewards = np.stack(rewards).swapaxes(0, 1)
         next_states = np.stack(next_states).swapaxes(0, 1)
 
-        self.agent.batch_update(states, actions, rewards, next_states)
+        loss = self.agent.batch_update(states, actions, rewards, next_states)
+
+        return loss
 
     def train(self, segments=100, episodes=100, batch_size=100):
         """
@@ -430,6 +432,7 @@ class Environment(BaseEnvironment):
         iterator = self.tqdm(range(segments), ascii=True, ncols=100)
 
         returns = []
+        losses = []
 
         with iterator as it:
             for _ in it:
@@ -438,9 +441,9 @@ class Environment(BaseEnvironment):
                 returns.append(self.exploration_segment(episodes))
 
                 for _ in range(2 * len(self.replay_memory) // 100):
-                    self.batch(batch_size)
+                    losses.append(self.batch(batch_size))
 
-        return np.array(returns)
+        return np.array(returns), np.array(losses)
 
     def run(self, epochs=10, segments=10, episodes=50, wall_time=10, num_evaluation=200, batch_size=100,
             save_directory=None, log_directory=None, temp_decay=1., display_return_curve=False):
@@ -455,11 +458,19 @@ class Environment(BaseEnvironment):
             save_directory: str, directory where to save the environment.
         """
 
-        total_returns_train, total_returns_eval = [], []
+        total_returns_train, total_returns_eval, total_losses_train = [], [], []
         temp_old = self.agent.temperature
 
         if log_directory is not None:
-            writer = SummaryWriter("../logs/" + log_directory + "/")
+            path = "../logs/" + log_directory + "/"
+            if not os.path.exists(path):
+                os.mkdir(path)
+            writer = SummaryWriter(path)
+
+        if save_directory is not None:
+            save_directory = save_directory + '/'
+            if not os.path.exists(save_directory):
+                os.mkdir(save_directory)
 
         self.notify('Beginning training')
 
@@ -468,7 +479,9 @@ class Environment(BaseEnvironment):
         for i in range(epochs):
             print("Epoch {}/{}".format(i + 1, epochs))
 
-            mean_return_train = self.train(segments, episodes, batch_size).mean(axis=0)[0]
+            returns, losses = self.train(segments, episodes, batch_size)
+            mean_return_train, epoch_loss = returns.mean(axis=0)[0], losses.mean()
+            self.agent.scheduler.step(epoch_loss)
 
             self.notify('>> Training return : {:.2f}'.format(mean_return_train))
             self.print('>> Training return : {:.2f}'.format(mean_return_train))
@@ -483,6 +496,9 @@ class Environment(BaseEnvironment):
             self.notify('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, steps))
             self.print('>> Evaluation return : {:.2f}, steps : {:.2f}'.format(mean_return_eval, steps))
 
+            self.print('>> Training loss : {:.2f}'.format(epoch_loss))
+
+            total_losses_train.append(epoch_loss)
             total_returns_train.append(mean_return_train)
             total_returns_eval.append(mean_return_eval)
 
@@ -491,8 +507,9 @@ class Environment(BaseEnvironment):
 
             if save_directory is not None:
                 self.agent.save(save_directory)
-                np.save(save_directory + '/training.npy', total_returns_train)
-                np.save(save_directory + '/evaluation.npy', total_returns_eval)
+                np.save(save_directory + 'training.npy', total_returns_train)
+                np.save(save_directory + 'evaluation.npy', total_returns_eval)
+                np.save(save_directory + 'train_losses.npy', total_losses_train)
 
             now = (time.time() - t0) / 3600
 
@@ -502,6 +519,11 @@ class Environment(BaseEnvironment):
                 plt.figure(),
                 plt.plot(total_returns_train, label='Mean training return')
                 plt.plot(total_returns_eval, label='Mean evaluation return')
+                plt.legend()
+                plt.show()
+
+                plt.figure()
+                plt.plot(total_losses_train, label='Epoch training loss')
                 plt.legend()
                 plt.show()
 
@@ -803,3 +825,57 @@ class OverSimplifiedEnvironment(SimplifiedEnvironment):
         else:
             raise Exception("No such method (must be vector, tiling, one_hot_encoding or mixed, for the " +
                             "OverSimplified environment)")
+
+
+import models.rnn as rnns
+import models.mlp as mlps
+import models.linear as linears
+import control.agents as agents
+
+# Debug
+if __name__ == '__main__':
+    env_name = 'Taxi-v2'
+
+    environment = Environment(
+        environment=gym.make(env_name),
+        agent=None,
+        verbose=True,
+        max_steps=200,
+        capacity=500,
+        representation_method='one_hot_encoding',
+        # representation_method='observation',
+    )
+
+    model_mlp = mlps.MLP(
+        input_dimension=environment.get_input_dimension(),
+        hidden_dimension=100,
+        n_hidden_layers=1,
+        n_actions=environment.n_actions,
+        dropout=0.
+    )
+
+    model = model_mlp
+    agent = agents.DQNAgent(
+        model=model,
+        optimiser=torch.optim.Adam(model.parameters(), lr=3e-4),
+        gamma=.99,
+        temperature=3.,
+        algorithm='qlearning',
+        n_actions=environment.n_actions,
+        terminal_state=environment.max_obs,
+        use_double_learning=True
+    )
+
+    environment.agent = agent
+
+    environment.run(
+        epochs=100,
+        segments=10,
+        episodes=10,
+        wall_time=2,
+        num_evaluation=50,
+        batch_size=100,
+        # save_directory='../saved/taxi/mlp',
+        log_directory='mlp_observations_taxi',
+        display_return_curve=True
+    )
