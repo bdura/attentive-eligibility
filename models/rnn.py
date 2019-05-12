@@ -71,7 +71,7 @@ class RNN(nn.Module):
         x = self.dropout(x)
 
         if self.hidden is not None:
-            hidden = torch.index_select(self.hidden, mask, dim=0)
+            hidden = torch.index_select(self.hidden, dim=0, index=mask)
             x = self.hidden_layer(torch.cat((hidden, x), dim=1))
         else:
             n = x.size(0)
