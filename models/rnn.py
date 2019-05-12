@@ -52,27 +52,7 @@ class RNN(nn.Module):
 
         return config
 
-    def remove_contexts(self, episodes):
-        """
-        Revoves the finished episodes.
-
-        Args:
-            episodes (list): A list of episodes to remove from the hiddens
-        """
-
-        # print(self.hidden)
-
-        if len(episodes) == 0:
-            return
-
-        # ep = np.array(episodes)
-        indices = torch.tensor([i for i in range(len(self.hidden)) if i not in episodes], dtype=torch.uint8)
-
-        self.hidden = self.hidden[indices]
-
-        # self.hiddens = deque([hidden[indices != ep] for hidden in self.hiddens])
-
-    def forward(self, x):
+    def forward(self, x, mask=None):
         """
         Performs the forward computation.
 
@@ -83,12 +63,16 @@ class RNN(nn.Module):
             actions (torch.Tensor): The estimated action-value function on the current state.
         """
 
+        if mask is None:
+            mask = torch.arange(len(x))
+
         x = self.input_layer(x)
         x = self.activation(x)
         x = self.dropout(x)
 
         if self.hidden is not None:
-            x = self.hidden_layer(torch.cat((self.hidden, x), dim=1))
+            hidden = torch.index_select(self.hidden, mask, dim=0)
+            x = self.hidden_layer(torch.cat((hidden, x), dim=1))
         else:
             n = x.size(0)
             context = torch.cat(tuple([self.first_hidden for _ in range(n)]))
