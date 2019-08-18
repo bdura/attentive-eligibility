@@ -55,7 +55,7 @@ EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
 TARGET_UPDATE = 10
-N_EPISODES = 1000
+N_EPISODES = 500
 BUFFER_SIZE = 1000
 
 model_params = dict(input_dim=4, hidden_dim=50, n_layers=1, n_actions=2)
