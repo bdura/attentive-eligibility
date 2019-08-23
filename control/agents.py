@@ -1,12 +1,26 @@
+import math
+
 import torch
 from torch import nn
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 
 from control.utils import BaseAgent
-
+from control.replay import ReplayMemory
+from torch import optim
+from control.replay import Transition
+import random
+from tqdm import tqdm
+from tensorboardX import SummaryWriter
+from itertools import count
 import copy
 
+
+DEFAULT_BUFFER_SIZE = 1000
+TARGET_UPDATE = 10
+EPS_START = 0.9
+EPS_END = 0.05
+EPS_DECAY = 200
 
 class DQNAgent(BaseAgent):
     """
@@ -15,31 +29,42 @@ class DQNAgent(BaseAgent):
 
     name = 'DQNAgent'
 
-    def __init__(self, model, optimiser, n_actions, gamma=.9, temperature=1, algorithm='expsarsa',
-                 use_eligibility=False, use_double_learning=True, terminal_state=None):
+    def __init__(self, policy_net, target_net, environment, gamma=.99, temperature=1, algorithm='expsarsa',
+                 use_eligibility=False, use_double_learning=True, terminal_state=None, buffer_size=DEFAULT_BUFFER_SIZE,
+                 optimizer=optim.Adam, criterion=nn.SmoothL1Loss, batch_size=128, tboard_path='tensorboard/transitions'):
         """
         Initialises the object.
 
         Args:
             model (nn.Module): A Pytorch module.
-            optimiser (torch.optim.Optimizer): An optimizer.
+            optimiser (torch.optim.self.optimizer): An self.optimizer.
         """
 
-        super(DQNAgent, self).__init__(temperature=temperature, n_actions=n_actions, gamma=gamma, algorithm=algorithm,
+        super(DQNAgent, self).__init__(temperature=temperature, environment=environment, gamma=gamma, algorithm=algorithm,
                                        use_eligibility=use_eligibility)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.model = model.to(self.device)
-        self.fixed = copy.deepcopy(self.model).eval()
-        # self.criterion = nn.SmoothL1Loss()
+        self.memory = ReplayMemory(buffer_size)
+        self.criterion = criterion()
+
+        self.batch_size = batch_size
+        self.policy_net = policy_net.to(self.device)
+        self.target_net = target_net.to(self.device)
+        self.target_net.load_state_dict(policy_net.state_dict())
+        self.target_net.eval()
+
+        self.optimizer = optimizer(policy_net.parameters())
         self.criterion = nn.SmoothL1Loss()
-        self.optimiser = optimiser
-        self.scheduler = MultiStepLR(self.optimiser, gamma=0.3, milestones=[10, 30, 60])
+        self.scheduler = MultiStepLR(self.optimizer, gamma=0.3, milestones=[10, 30, 60])
 
         self.use_double_learning = use_double_learning
 
         self.terminal_state = terminal_state
+
+        # TENSORBOARD
+        if tboard_path is not None:
+            self.writer = SummaryWriter(tboard_path)
 
     def get_config(self):
         """
@@ -139,7 +164,7 @@ class DQNAgent(BaseAgent):
         """
 
         state = self.tensorise(state)
-        self.optimiser.zero_grad()
+        self.optimizer.zero_grad()
 
         # Add a batch dimension
         state = state.unsqueeze(0)
@@ -152,9 +177,9 @@ class DQNAgent(BaseAgent):
         loss.backward(retain_graph=True)
 
         if self.use_eligibility:
-            self.optimiser.step(loss)
+            self.optimizer.step(loss)
         else:
-            self.optimiser.step()
+            self.optimizer.step()
 
     def target(self, reward, next_state):
         """
@@ -236,7 +261,7 @@ class DQNAgent(BaseAgent):
         for state, action, target in zip(states, actions, targets):
 
             # Zeroing the gradients
-            self.optimiser.zero_grad()
+            self.optimizer.zero_grad()
 
             state = self.tensorise(state)
 
@@ -245,12 +270,116 @@ class DQNAgent(BaseAgent):
             loss.backward(retain_graph=True)
 
             if self.use_eligibility:
-                self.optimiser.step(loss)
+                self.optimizer.step(loss)
 
             else:
-                self.optimiser.step()
+                self.optimizer.step()
 
         return loss.item()
+
+    def optimize_model(self, steps_done):
+        if len(self.memory) < self.batch_size:
+            return
+        transitions = self.memory.sample(self.batch_size)
+        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
+        # detailed explanation). This converts batch-array of Transitions
+        # to Transition of batch-arrays.
+        batch = Transition(*zip(*transitions))
+
+        # Compute a mask of non-final states and concatenate the batch elements
+        # (a final state would've been the one after which simulation ended)
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                batch.next_state)), device=self.device, dtype=torch.uint8)
+        non_final_next_states = torch.cat(tuple([s for s in batch.next_state
+                                                 if s is not None]))
+        state_batch = torch.cat(batch.state)
+        action_batch = torch.cat(batch.action)
+        reward_batch = torch.cat(batch.reward)
+
+        # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+        # columns of actions taken. These are the actions which would've been taken
+        # for each batch state according to policy_net
+        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+
+        # Compute V(s_{t+1}) for all next states.
+        # Expected values of actions for non_final_next_states are computed based
+        # on the "older" target_net; selecting their best reward with max(1)[0].
+        # This is merged based on the mask, such that we'll have either the expected
+        # state value or 0 in case the state was final.
+        next_state_values = torch.zeros(self.batch_size, device=self.device)
+        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
+        # Compute the expected Q values
+        expected_state_action_values = (next_state_values * self.gamma) + reward_batch.float()
+
+        # Compute Huber loss
+        loss = self.criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+
+        # Optimize the model
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        self.writer.add_scalar('loss', loss.item(), steps_done)
+
+        # for param in policy_net.parameters():
+        #     param.grad.data.clamp_(-1, 1)
+        self.optimizer.step()
+
+        return loss
+
+    def select_action(self, state, steps_done):
+        sample = random.random()
+        eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+                        math.exp(-1. * steps_done / EPS_DECAY)
+        if sample > eps_threshold:
+            with torch.no_grad():
+                # t.max(1) will return largest column value of each row.
+                # second column on max result is index of where max element was
+                # found, so we pick action with the larger expected reward.
+                return self.policy_net(state).max(1)[1].view(1, 1)
+        else:
+            return torch.tensor([[random.randrange(self.n_actions)]], device=self.device, dtype=torch.long)
+
+    def train(self, num_episodes):
+
+        print('>> Beginning training')
+        steps_done = 0
+        for i_episode in tqdm(range(num_episodes), ascii=True, ncols=100):
+            # Initialize the self.environment and state
+            state = torch.tensor(self.environment.reset()).float().unsqueeze(0)
+
+            full_return = 0
+
+            for t in count():
+                # Select and perform an action
+                action = self.select_action(state, steps_done)
+                steps_done+=1
+                s, reward, done, _ = self.environment.step(action.item())
+
+                full_return += reward
+
+                reward = torch.tensor([reward], device=self.device)
+
+                # Observe new state
+                if not done:
+                    next_state = torch.tensor(s).float().unsqueeze(0)
+                else:
+                    next_state = None
+
+                # Store the transition in memory
+                self.memory.push(state, action, next_state, reward)
+
+                # Move to the next state
+                state = next_state
+
+                # Perform one step of the optimization (on the target network)
+                self.optimize_model(steps_done)
+
+                if done:
+                    self.writer.add_scalar('duration', t, i_episode)
+                    break
+            # Update the target network, copying all weights and biases in DQN
+            if i_episode % TARGET_UPDATE == 0:
+                self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def reset(self):
         """Resets the model."""

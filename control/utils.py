@@ -172,9 +172,10 @@ class BaseEnvironment:
 
 class BaseAgent(object):
 
-    def __init__(self, temperature, n_actions, gamma, algorithm, use_eligibility):
+    def __init__(self, temperature, environment, gamma, algorithm, use_eligibility):
         self.temperature = temperature
-        self.n_actions = n_actions
+        self.environment = environment
+        self.n_actions = self.environment.action_space.n
         self.gamma = gamma
         self.algorithm = algorithm
         self.use_eligibility = use_eligibility
