@@ -1,7 +1,8 @@
+from collections import deque
+
+import numpy as np
 import torch
 from torch import nn
-
-from collections import deque
 
 
 class RNN(nn.Module):
@@ -28,14 +29,14 @@ class RNN(nn.Module):
 
         self.input_layer = nn.Linear(input_dimension, hidden_dimension)
 
-        self.context_layer = nn.Linear(2 * hidden_dimension, hidden_dimension)
+        self.hidden_layer = nn.Linear(2 * hidden_dimension, hidden_dimension)
 
-        self.first_context = nn.Parameter(torch.zeros((1, hidden_dimension)))
+        self.first_hidden = nn.Parameter(torch.zeros((1, hidden_dimension)))
 
-        self.context = None
+        self.hidden = None
 
-        self.contexts = deque()
-        self.truncate = truncate
+        # self.hiddens = deque()
+        # self.truncate = truncate
 
         self.action_layer = nn.Linear(hidden_dimension, n_actions)
 
@@ -51,7 +52,7 @@ class RNN(nn.Module):
 
         return config
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         """
         Performs the forward computation.
 
@@ -62,24 +63,28 @@ class RNN(nn.Module):
             actions (torch.Tensor): The estimated action-value function on the current state.
         """
 
+        if mask is None:
+            mask = torch.arange(len(x))
+
         x = self.input_layer(x)
         x = self.activation(x)
         x = self.dropout(x)
 
-        if self.context is not None:
-            x = self.context_layer(torch.cat((self.context, x), dim=1))
+        if self.hidden is not None:
+            hidden = torch.index_select(self.hidden, dim=0, index=mask)
+            x = self.hidden_layer(torch.cat((hidden, x), dim=1))
         else:
             n = x.size(0)
-            context = torch.cat(tuple([self.first_context for _ in range(n)]))
-            x = self.context_layer(torch.cat((context, x), dim=1))
+            context = torch.cat(tuple([self.first_hidden for _ in range(n)]))
+            x = self.hidden_layer(torch.cat((context, x), dim=1))
 
         x = self.activation(x)
 
-        self.context = x
+        self.hidden = x
 
-        self.contexts.append(x)
-        if len(self.contexts) > self.truncate:
-            self.contexts.popleft().detach_()
+        # self.hiddens.append(x)
+        # if len(self.hiddens) > self.truncate:
+        #     self.hiddens.popleft().detach_()
 
         x = self.dropout(x)
 
@@ -104,12 +109,12 @@ class RNN(nn.Module):
             x = self.input_layer(x)
             x = self.activation(x)
 
-            if self.context is not None:
-                x = self.context_layer(torch.cat((self.context, x), dim=1))
+            if self.hidden is not None:
+                x = self.hidden_layer(torch.cat((self.hidden, x), dim=1))
             else:
                 n = x.size(0)
-                context = torch.cat(tuple([self.first_context for _ in range(n)]))
-                x = self.context_layer(torch.cat((context, x), dim=1))
+                context = torch.cat(tuple([self.first_hidden for _ in range(n)]))
+                x = self.hidden_layer(torch.cat((context, x), dim=1))
 
             x = self.activation(x)
 
@@ -119,7 +124,7 @@ class RNN(nn.Module):
 
     def reset(self):
         """Resets the time-dependency of the model"""
-        self.context = None
+        self.hidden = None
 
 
 class AttentiveRNN(nn.Module):
@@ -135,7 +140,7 @@ class AttentiveRNN(nn.Module):
             key_dimension (int): The dimension of the keys/queries.
             n_actions (int): The number of possible actions.
             dropout (float): The dropout factor.
-            horizon (int): The number of contexts considered during the attention phase. -1 means consider all.
+            horizon (int): The number of hiddens considered during the attention phase. -1 means consider all.
         """
 
         super(AttentiveRNN, self).__init__()
@@ -162,8 +167,8 @@ class AttentiveRNN(nn.Module):
         self.hiddens = deque()
         self.horizon = horizon
 
-        self.contexts = deque()
-        self.truncate = truncate
+        # self.hiddens = deque()
+        # self.truncate = truncate
 
         self.action_layer = nn.Linear(hidden_dimension, n_actions)
 
@@ -186,6 +191,23 @@ class AttentiveRNN(nn.Module):
 
         self.hiddens.clear()
         self.context = None
+
+    def remove_contexts(self, episodes):
+        """
+        Revoves the finished episodes.
+
+        Args:
+            episodes (list): A list of episodes to remove from the hiddens
+        """
+
+        print(episodes)
+
+        episodes = torch.tensor(episodes)
+        indices = torch.arange(len(self.context))
+
+        self.context = self.context[indices != episodes]
+
+        self.hiddens = deque([hidden[indices != episodes] for hidden in self.contexts])
 
     def forward(self, x):
         """

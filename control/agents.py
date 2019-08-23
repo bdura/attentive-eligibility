@@ -33,7 +33,7 @@ class DQNAgent(BaseAgent):
         self.model = model.to(self.device)
         self.fixed = copy.deepcopy(self.model).eval()
         # self.criterion = nn.SmoothL1Loss()
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.SmoothL1Loss()
         self.optimiser = optimiser
         self.scheduler = MultiStepLR(self.optimiser, gamma=0.3, milestones=[10, 30, 60])
 

@@ -7,10 +7,6 @@ import torch
 import gym
 import matplotlib.pyplot as plt
 
-try:
-    from tensorboardX import SummaryWriter
-except ModuleNotFoundError:
-    pass
 from control.utils import softmax, tiling, one_hot_encoding, BaseEnvironment
 from control.utils import Episode, ReplayMemory, Transition
 
@@ -465,7 +461,7 @@ class Environment(BaseEnvironment):
             path = "../logs/" + log_directory + "/"
             if not os.path.exists(path):
                 os.mkdir(path)
-            writer = SummaryWriter(path)
+            # writer = SummaryWriter(path)
 
         if save_directory is not None:
             save_directory = save_directory + '/'
@@ -835,7 +831,7 @@ import util.eligibility_optim as eligibility
 
 # Debug
 if __name__ == '__main__':
-    env_name = 'Taxi-v2'
+    env_name = 'CartPole-v0'
 
     environment = Environment(
         environment=gym.make(env_name),
@@ -843,8 +839,8 @@ if __name__ == '__main__':
         verbose=True,
         max_steps=200,
         capacity=500,
-        representation_method='one_hot_encoding',
-        # representation_method='observation',
+        # representation_method='one_hot_encoding',
+        representation_method='observation',
     )
 
     model_mlp = mlps.MLP(
