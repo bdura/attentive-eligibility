@@ -8,6 +8,8 @@ import os
 import json
 
 from collections import namedtuple
+import torch.nn as nn
+import torch
 
 from functools import wraps
 
@@ -60,6 +62,17 @@ def description(desc):
         return f
 
     return decorator
+
+
+def compute_similarity(state, memory):
+    """
+
+    :param state: Current state to compute similarity with
+    :param memory: Replay memory containing states to sample from
+    :return: Tensor of similarities of shape len(memory) x 1
+    """
+    cos = nn.CosineSimilarity(dim=1)
+    return cos(state.unsqueeze(0), torch.stack(memory.states))
 
 
 def memory(func):
@@ -172,13 +185,19 @@ class BaseEnvironment:
 
 class BaseAgent(object):
 
-    def __init__(self, temperature, environment, gamma, algorithm, use_eligibility):
+    def __init__(self, temperature, environment, gamma, algorithm, use_eligibility, use_memory_attention, alpha=0.5,
+                 beta=0.5, attention_k=10):
+
         self.temperature = temperature
         self.environment = environment
         self.n_actions = self.environment.action_space.n
         self.gamma = gamma
         self.algorithm = algorithm
         self.use_eligibility = use_eligibility
+        self.use_memory_attention = use_memory_attention
+        self.attention_k = attention_k
+        self.alpha = alpha
+        self.beta = beta
 
     def q(self, state):
         """
@@ -292,6 +311,7 @@ class ReplayMemory(object):
         """Saves a transition."""
         if len(self.memory) < self.capacity:
             self.memory.append(None)
+
         self.memory[self.position] = episode
         self.position = (self.position + 1) % self.capacity
 

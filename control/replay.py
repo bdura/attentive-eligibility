@@ -1,5 +1,7 @@
 import random
 from collections import namedtuple
+import numpy as np
+import torch
 
 Transition = namedtuple(
     'Transition',
@@ -15,17 +17,25 @@ class ReplayMemory(object):
     def __init__(self, capacity):
         self.capacity = capacity
         self.memory = []
+        self.states = []
         self.position = 0
 
     def push(self, *args):
         """Saves a transition."""
         if len(self.memory) < self.capacity:
             self.memory.append(None)
+            self.states.append(None)
         self.memory[self.position] = Transition(*args)
+        self.states[self.position] = self.memory[self.position].state.squeeze(0)
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
+
+    def sample_states(self, num_samples, similarity_vec):
+        index = sorted(np.argsort(similarity_vec)[-num_samples:].numpy())
+        state_batch = torch.stack(tensors=[self.states[i] for i in index])
+        return state_batch, index
 
     def __len__(self):
         return len(self.memory)
