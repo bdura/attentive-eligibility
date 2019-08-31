@@ -22,6 +22,7 @@ EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
 
+
 class DQNAgent(BaseAgent):
     """
     A general class for value approximation by a neural network
