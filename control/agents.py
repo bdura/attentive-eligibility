@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
+import time
 
 from control.utils import BaseAgent
 from control.replay import ReplayMemory
@@ -13,14 +14,16 @@ import random
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from itertools import count
+import torch.nn.functional as F
 import copy
-
+import control.utils as utils
 
 DEFAULT_BUFFER_SIZE = 1000
 TARGET_UPDATE = 10
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
+
 
 class DQNAgent(BaseAgent):
     """
@@ -31,7 +34,8 @@ class DQNAgent(BaseAgent):
 
     def __init__(self, policy_net, target_net, environment, gamma=.99, temperature=1, algorithm='expsarsa',
                  use_eligibility=False, use_double_learning=True, terminal_state=None, buffer_size=DEFAULT_BUFFER_SIZE,
-                 optimizer=optim.Adam, criterion=nn.SmoothL1Loss, batch_size=128, tboard_path='tensorboard/transitions'):
+                 optimizer=optim.Adam, criterion=nn.SmoothL1Loss, batch_size=128, tboard_path='tensorboard/transitions',
+                 use_memory_attention=False, attention_k=10):
         """
         Initialises the object.
 
@@ -40,8 +44,10 @@ class DQNAgent(BaseAgent):
             optimiser (torch.optim.self.optimizer): An self.optimizer.
         """
 
-        super(DQNAgent, self).__init__(temperature=temperature, environment=environment, gamma=gamma, algorithm=algorithm,
-                                       use_eligibility=use_eligibility)
+        super(DQNAgent, self).__init__(temperature=temperature, environment=environment, gamma=gamma,
+                                       algorithm=algorithm,
+                                       use_eligibility=use_eligibility, use_memory_attention=use_memory_attention,
+                                       attention_k=attention_k)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -64,7 +70,7 @@ class DQNAgent(BaseAgent):
 
         # TENSORBOARD
         if tboard_path is not None:
-            self.writer = SummaryWriter(tboard_path)
+            self.writer = SummaryWriter(tboard_path + time.ctime())
 
     def get_config(self):
         """
@@ -281,13 +287,9 @@ class DQNAgent(BaseAgent):
         if len(self.memory) < self.batch_size:
             return
         transitions = self.memory.sample(self.batch_size)
-        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
-        # detailed explanation). This converts batch-array of Transitions
-        # to Transition of batch-arrays.
+
         batch = Transition(*zip(*transitions))
 
-        # Compute a mask of non-final states and concatenate the batch elements
-        # (a final state would've been the one after which simulation ended)
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.next_state)), device=self.device, dtype=torch.uint8)
         non_final_next_states = torch.cat(tuple([s for s in batch.next_state
@@ -296,16 +298,21 @@ class DQNAgent(BaseAgent):
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
 
-        # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-        # columns of actions taken. These are the actions which would've been taken
-        # for each batch state according to policy_net
-        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+        if self.use_memory_attention:
+            tmp_state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+            trace_vals = []
+            for state, action in zip(state_batch, action_batch):
+                similarity_vec = utils.compute_similarity(state, self.memory)
+                state_trace_batch, batch_idx = self.memory.sample_states(num_samples=self.attention_k,
+                                                                         similarity_vec=similarity_vec)
+                weights = F.softmax(similarity_vec[batch_idx])
+                trace_vals.append(weights.T @ self.policy_net(state_trace_batch)[:, action])
 
-        # Compute V(s_{t+1}) for all next states.
-        # Expected values of actions for non_final_next_states are computed based
-        # on the "older" target_net; selecting their best reward with max(1)[0].
-        # This is merged based on the mask, such that we'll have either the expected
-        # state value or 0 in case the state was final.
+            trace_vals = torch.stack(tensors=trace_vals)
+            state_action_values = self.alpha * tmp_state_action_values + self.beta * trace_vals
+        else:
+            state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+
         next_state_values = torch.zeros(self.batch_size, device=self.device)
         next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
         # Compute the expected Q values
@@ -352,7 +359,7 @@ class DQNAgent(BaseAgent):
             for t in count():
                 # Select and perform an action
                 action = self.select_action(state, steps_done)
-                steps_done+=1
+                steps_done += 1
                 s, reward, done, _ = self.environment.step(action.item())
 
                 full_return += reward

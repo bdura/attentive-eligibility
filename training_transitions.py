@@ -15,9 +15,7 @@ from tqdm import tqdm
 from control.agents import DQNAgent
 
 
-
 # ENVIRONMENT
-
 
 
 # MODEL (we may import a model)
@@ -54,6 +52,7 @@ BUFFER_SIZE = 1000
 
 model_params = dict(input_dim=4, hidden_dim=50, n_layers=1, n_actions=2)
 
+
 # Get screen size so that we can initialize layers correctly based on shape
 # returned from AI gym. Typical dimensions at this point are close to 3x40x90
 # which is the result of a clamped and down-scaled render buffer in get_screen()
@@ -63,19 +62,13 @@ model_params = dict(input_dim=4, hidden_dim=50, n_layers=1, n_actions=2)
 # Get number of actions from gym action space
 
 
-
 # optimizer = optim.SGD(policy_net.parameters(), lr=.9)
 
 # optimizer = optim.Adam(policy_net.parameters())
 # optimizer = eligibility.EligibilitySGD(policy_net.parameters(), lr=.9, gamma=.9, lambd=.9)
 
 
-
-
-
-
 def train():
-
     print('>> Beginning training')
 
     for i_episode in tqdm(range(N_EPISODES), ascii=True, ncols=100):
@@ -120,5 +113,5 @@ if __name__ == '__main__':
     target_net = DQN(**model_params)
     policy_net = DQN(**model_params)
     environment = gym.make('CartPole-v0')
-    agent = DQNAgent(target_net=target_net, policy_net=policy_net, environment=environment)
-    agent.train(10)
+    agent = DQNAgent(target_net=target_net, policy_net=policy_net, environment=environment, use_memory_attention=True)
+    agent.train(1000)
