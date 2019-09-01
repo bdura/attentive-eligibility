@@ -86,6 +86,7 @@ if __name__ == '__main__':
         tboard_path='tensorboard/cartpole-qlearning',
         optimizer=lambda x: optim.RMSprop(x, lr=1e-2),
         attention_k=10,
+        attention_t=.1,
         use_memory_attention=True
     )
     agent.train(10000)

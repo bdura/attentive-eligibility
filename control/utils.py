@@ -186,7 +186,7 @@ class BaseEnvironment:
 class BaseAgent(object):
 
     def __init__(self, temperature, environment, gamma, algorithm, use_eligibility, use_memory_attention, alpha=0.5,
-                 beta=0.5, attention_k=10):
+                 beta=0.5, attention_k=10, attention_t=1):
 
         self.temperature = temperature
         self.environment = environment
@@ -196,6 +196,7 @@ class BaseAgent(object):
         self.use_eligibility = use_eligibility
         self.use_memory_attention = use_memory_attention
         self.attention_k = attention_k
+        self.attention_t = attention_t
         self.alpha = alpha
         self.beta = beta
 

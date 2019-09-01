@@ -37,7 +37,7 @@ class DQNAgent(BaseAgent):
                  algorithm='expsarsa', use_eligibility=False, use_double_learning=True,
                  terminal_state=None, buffer_size=DEFAULT_BUFFER_SIZE, optimizer=optim.Adam,
                  criterion=nn.SmoothL1Loss, batch_size=128, tboard_path='tensorboard/transitions',
-                 use_memory_attention=False, attention_k=10):
+                 use_memory_attention=False, attention_k=10, attention_t=1):
         """
         Initialises the object.
 
@@ -49,7 +49,7 @@ class DQNAgent(BaseAgent):
         super(DQNAgent, self).__init__(temperature=temperature, environment=environment, gamma=gamma,
                                        algorithm=algorithm,
                                        use_eligibility=use_eligibility, use_memory_attention=use_memory_attention,
-                                       attention_k=attention_k)
+                                       attention_k=attention_k, attention_t=attention_t)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -311,7 +311,7 @@ class DQNAgent(BaseAgent):
             values, indices = torch.topk(similarity_vec, dim=1, k=self.attention_k + 1)
 
             # Obtain the softmax weights
-            weights = F.softmax(values, dim=1)
+            weights = F.softmax(values / self.attention_t, dim=1)
 
             # B x Ak x Ds
             similar_states = torch.index_select(states, dim=0, index=indices.view(-1))
