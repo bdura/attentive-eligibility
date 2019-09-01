@@ -30,9 +30,9 @@ def softmax(x):
     else:
         axis = 1
 
-    z = x - x.max(axis=axis, keepdims=True)
+    z = x - x.max(dim=axis, keepdim=True)
 
-    return np.exp(z) / np.exp(z).sum(axis=axis, keepdims=True)
+    return np.exp(z) / np.exp(z).sum(dim=axis, keepdim=True)
 
 
 def description(desc):

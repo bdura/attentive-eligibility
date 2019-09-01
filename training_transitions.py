@@ -1,5 +1,7 @@
-import gym
+import torch
+from gym_minigrid.wrappers import *
 from torch import nn
+from torch import optim
 
 from control.agents import DQNAgent
 
@@ -30,15 +32,60 @@ class DQN(nn.Module):
         return self.model(x)
 
 
-BATCH_SIZE = 128
-BUFFER_SIZE = 1000
-N_EPISODES = 1000
+class CustomImgObsWrapper(ImgObsWrapper):
+    """
+    Flatten the output.
+    """
 
-model_params = dict(input_dim=4, hidden_dim=50, n_layers=1, n_actions=2)
+    def observation(self, obs):
+        return torch.flatten(torch.tensor(super(CustomImgObsWrapper, self).observation(obs)))
+
+
+class CustomFullyObsWrapper(FullyObsWrapper):
+    """
+    Flatten the output.
+    """
+
+    def observation(self, obs):
+        return torch.flatten(torch.tensor(super(CustomFullyObsWrapper, self).observation(obs)))
+
+
+class CustomTensorized(gym.core.ObservationWrapper):
+    """
+    Flatten the output.
+    """
+
+    def observation(self, observation):
+        return torch.flatten(torch.tensor(observation))
+
+    def _observation(self, obs):
+        return torch.flatten(torch.tensor(obs))
+
+
+# env = gym.make('MiniGrid-Empty-5x5-v0')
+# env = CustomFullyObsWrapper(env)
+
+env = gym.make('CartPole-v0')
+env = CustomTensorized(env)
+
+n_observations = np.prod(env.observation_space.shape)
+n_actions = env.action_space.n
+
+model_params = dict(input_dim=n_observations, hidden_dim=200, n_layers=2, n_actions=n_actions)
 
 if __name__ == '__main__':
-    target_net = DQN(**model_params)
-    policy_net = DQN(**model_params)
-    environment = gym.make('CartPole-v0')
-    agent = DQNAgent(target_net=target_net, policy_net=policy_net, environment=environment)
+    target_net = DQN(**model_params).eval()
+    policy_net = DQN(**model_params).train()
+
+    agent = DQNAgent(
+        target_net=target_net,
+        policy_net=policy_net,
+        environment=env,
+        temperature=20,
+        annealing=.999,
+        tboard_path='tensorboard/cartpole-qlearning',
+        optimizer=lambda x: optim.RMSprop(x, lr=1e-2),
+        attention_k=10,
+        use_memory_attention=True
+    )
     agent.train(10000)

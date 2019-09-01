@@ -2,6 +2,7 @@ import math
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 import time
@@ -32,9 +33,10 @@ class DQNAgent(BaseAgent):
 
     name = 'DQNAgent'
 
-    def __init__(self, policy_net, target_net, environment, gamma=.99, temperature=1, algorithm='expsarsa',
-                 use_eligibility=False, use_double_learning=True, terminal_state=None, buffer_size=DEFAULT_BUFFER_SIZE,
-                 optimizer=optim.Adam, criterion=nn.SmoothL1Loss, batch_size=128, tboard_path='tensorboard/transitions',
+    def __init__(self, policy_net, target_net, environment, gamma=.99, temperature=1, annealing=1,
+                 algorithm='expsarsa', use_eligibility=False, use_double_learning=True,
+                 terminal_state=None, buffer_size=DEFAULT_BUFFER_SIZE, optimizer=optim.Adam,
+                 criterion=nn.SmoothL1Loss, batch_size=128, tboard_path='tensorboard/transitions',
                  use_memory_attention=False, attention_k=10):
         """
         Initialises the object.
@@ -65,6 +67,8 @@ class DQNAgent(BaseAgent):
         self.scheduler = MultiStepLR(self.optimizer, gamma=0.3, milestones=[10, 30, 60])
 
         self.use_double_learning = use_double_learning
+
+        self.annealing = annealing
 
         self.terminal_state = terminal_state
 
@@ -117,10 +121,6 @@ class DQNAgent(BaseAgent):
     def eval(self):
         """Puts the model in evaluation mode."""
         self.model.eval()
-
-    def train(self):
-        """Puts the model in training mode."""
-        self.model.train()
 
     def q(self, state):
         """
@@ -299,17 +299,38 @@ class DQNAgent(BaseAgent):
         reward_batch = torch.cat(batch.reward)
 
         if self.use_memory_attention:
-            tmp_state_action_values = self.policy_net(state_batch).gather(1, action_batch)
-            trace_vals = []
-            for state, action in zip(state_batch, action_batch):
-                similarity_vec = utils.compute_similarity(state, self.memory)
-                state_trace_batch, batch_idx = self.memory.sample_states(num_samples=self.attention_k,
-                                                                         similarity_vec=similarity_vec)
-                weights = F.softmax(similarity_vec[batch_idx])
-                trace_vals.append(weights.T @ self.policy_net(state_trace_batch)[:, action])
 
-            trace_vals = torch.stack(tensors=trace_vals)
-            state_action_values = self.alpha * tmp_state_action_values + self.beta * trace_vals
+            tmp_state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+
+            states = torch.cat(Transition(*zip(*self.memory.memory)).state)
+
+            # B x M
+            similarity_vec = F.cosine_similarity(state_batch.unsqueeze(1), states.unsqueeze(0), dim=-1)
+
+            # Compute the topk values and indices (k + 1 to get the current state itself).
+            values, indices = torch.topk(similarity_vec, dim=1, k=self.attention_k + 1)
+
+            # Obtain the softmax weights
+            weights = F.softmax(values, dim=1)
+
+            # B x Ak x Ds
+            similar_states = torch.index_select(states, dim=0, index=indices.view(-1))
+            similar_states = similar_states.view(state_batch.size(0), self.attention_k + 1, -1)
+
+            q = self.policy_net(similar_states)
+
+            value = (weights.unsqueeze(-1) * q).sum(1)
+
+            # trace_vals = []
+            # for state, action in zip(state_batch, action_batch):
+            #     similarity_vec = utils.compute_similarity(state, self.memory)
+            #     state_trace_batch, batch_idx = self.memory.sample_states(num_samples=self.attention_k,
+            #                                                              similarity_vec=similarity_vec)
+            #     weights = F.softmax(similarity_vec[batch_idx])
+            #     trace_vals.append(weights @ self.policy_net(state_trace_batch)[:, action])
+            #
+            # value = torch.stack(tensors=trace_vals)
+            state_action_values = self.alpha * tmp_state_action_values + self.beta * value
         else:
             state_action_values = self.policy_net(state_batch).gather(1, action_batch)
 
@@ -325,7 +346,7 @@ class DQNAgent(BaseAgent):
         self.optimizer.zero_grad()
         loss.backward()
 
-        self.writer.add_scalar('loss', loss.item(), steps_done)
+        self.writer.add_scalar('exploration/loss', loss.item(), steps_done)
 
         # for param in policy_net.parameters():
         #     param.grad.data.clamp_(-1, 1)
@@ -346,47 +367,79 @@ class DQNAgent(BaseAgent):
         else:
             return torch.tensor([[random.randrange(self.n_actions)]], device=self.device, dtype=torch.long)
 
+    def episode(self, steps_done=0, temperature=1, greedy=False):
+
+        if greedy:
+            network = self.policy_net
+        else:
+            network = self.target_net
+
+        state = self.environment.reset().clone().detach().float().unsqueeze(0)
+
+        full_return = 0
+
+        for t in count():
+            # Select and perform an action
+            q = network(state)
+            if greedy:
+                action = q.max(1)[1].view(1, 1)
+            else:
+                p = F.softmax(q / temperature, dim=1)
+                action = torch.multinomial(p, num_samples=1).view(1, 1)
+
+            s, reward, done, _ = self.environment.step(action.item())
+
+            full_return += reward
+
+            reward = torch.tensor([reward], device=self.device, dtype=torch.float)
+
+            # Observe new state
+            if not done:
+                next_state = s.clone().detach().float().unsqueeze(0)
+            else:
+                next_state = None
+
+            # Store the transition in memory
+            self.memory.push(state, action, next_state, reward)
+
+            # Move to the next state
+            state = next_state
+
+            # Perform one step of the optimization (on the target network)
+            if not greedy:
+                self.optimize_model(steps_done + t)
+
+            if done:
+                return full_return, t
+
     def train(self, num_episodes):
 
-        print('>> Beginning training')
         steps_done = 0
         for i_episode in tqdm(range(num_episodes), ascii=True, ncols=100):
-            # Initialize the self.environment and state
-            state = torch.tensor(self.environment.reset()).float().unsqueeze(0)
 
-            full_return = 0
+            if self.annealing < 1:
+                temperature = self.temperature * (self.annealing ** i_episode)
+                self.writer.add_scalar('exploration/temperature', temperature, i_episode)
+            else:
+                temperature = self.temperature
 
-            for t in count():
-                # Select and perform an action
-                action = self.select_action(state, steps_done)
-                steps_done += 1
-                s, reward, done, _ = self.environment.step(action.item())
+            full_return, duration = self.episode(
+                steps_done=steps_done,
+                temperature=temperature,
+            )
+            steps_done += duration
 
-                full_return += reward
+            self.writer.add_scalar('exploration/duration', duration, i_episode)
+            self.writer.add_scalar('exploration/return', full_return, i_episode)
 
-                reward = torch.tensor([reward], device=self.device)
-
-                # Observe new state
-                if not done:
-                    next_state = torch.tensor(s).float().unsqueeze(0)
-                else:
-                    next_state = None
-
-                # Store the transition in memory
-                self.memory.push(state, action, next_state, reward)
-
-                # Move to the next state
-                state = next_state
-
-                # Perform one step of the optimization (on the target network)
-                self.optimize_model(steps_done)
-
-                if done:
-                    self.writer.add_scalar('duration', t, i_episode)
-                    break
             # Update the target network, copying all weights and biases in DQN
             if i_episode % TARGET_UPDATE == 0:
                 self.target_net.load_state_dict(self.policy_net.state_dict())
+
+            if i_episode % 10 == 0:
+                full_return, duration = self.episode(steps_done, greedy=True)
+                self.writer.add_scalar('greedy/duration', duration, i_episode)
+                self.writer.add_scalar('greedy/return', full_return, i_episode)
 
     def reset(self):
         """Resets the model."""
