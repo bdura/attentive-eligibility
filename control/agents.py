@@ -307,19 +307,21 @@ class DQNAgent(BaseAgent):
             # B x M
             similarity_vec = F.cosine_similarity(state_batch.unsqueeze(1), states.unsqueeze(0), dim=-1)
 
-            # Compute the topk values and indices (k + 1 to get the current state itself).
-            values, indices = torch.topk(similarity_vec, dim=1, k=self.attention_k + 1)
+            # Computes the topk values and indices.
+            values, indices = torch.topk(similarity_vec, dim=1, k=self.attention_k)
 
-            # Obtain the softmax weights
+            # Obtains the softmax weights
             weights = F.softmax(values / self.attention_t, dim=1)
 
             # B x Ak x Ds
             similar_states = torch.index_select(states, dim=0, index=indices.view(-1))
-            similar_states = similar_states.view(state_batch.size(0), self.attention_k + 1, -1)
+            similar_states = similar_states.view(state_batch.size(0), self.attention_k, -1)
 
+            # Computes the q value for everyone.
             q = self.policy_net(similar_states)
 
             value = (weights.unsqueeze(-1) * q).sum(1)
+            value = value.gather(dim=1, index=action_batch)
 
             # trace_vals = []
             # for state, action in zip(state_batch, action_batch):
@@ -329,7 +331,8 @@ class DQNAgent(BaseAgent):
             #     weights = F.softmax(similarity_vec[batch_idx])
             #     trace_vals.append(weights @ self.policy_net(state_trace_batch)[:, action])
             #
-            # value = torch.stack(tensors=trace_vals)
+            # trace_value = torch.stack(tensors=trace_vals)
+
             state_action_values = self.alpha * tmp_state_action_values + self.beta * value
         else:
             state_action_values = self.policy_net(state_batch).gather(1, action_batch)
