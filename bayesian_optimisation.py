@@ -78,12 +78,12 @@ from skopt.space import Real, Integer, Categorical
 from skopt import gp_minimize
 
 dimensions = [
-    Integer(10, 200),
-    Integer(0, 5),
+    Integer(30, 60),
+    Integer(0, 3),
     Real(1e-4, 1e-1),
     Categorical([optim.RMSprop, optim.Adam]),
     Real(.1, 4),
-    Real(.9, 1)
+    Real(.97, 1)
     # Categorical([True, False]),
     # Integer(5, 20),
     # Real(1e-2, 1),
@@ -121,7 +121,7 @@ def objective(hidden_dim, n_layers, lr,
         # attention_k=attention_k.item(),
         # attention_t=attention_t.item(),
         # use_memory_attention=use_memory_attention,
-        tboard_path=f'tensorboard/skopt'
+        tboard_path=f'tensorboard/skopt2'
     )
 
     agent.train(500)
@@ -142,3 +142,5 @@ if __name__ == '__main__':
         n_random_starts=5,
         random_state=123,
     )
+
+    print(res)

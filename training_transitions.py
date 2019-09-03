@@ -62,16 +62,16 @@ class CustomTensorized(gym.core.ObservationWrapper):
         return torch.flatten(torch.tensor(obs))
 
 
-# env = gym.make('MiniGrid-Empty-5x5-v0')
-# env = CustomFullyObsWrapper(env)
+env = gym.make('MiniGrid-Empty-5x5-v0')
+env = CustomFullyObsWrapper(env)
 
-env = gym.make('CartPole-v0')
-env = CustomTensorized(env)
+# env = gym.make('CartPole-v0')
+# env = CustomTensorized(env)
 
 n_observations = np.prod(env.observation_space.shape)
 n_actions = env.action_space.n
 
-model_params = dict(input_dim=n_observations, hidden_dim=200, n_layers=2, n_actions=n_actions)
+model_params = dict(input_dim=n_observations, hidden_dim=100, n_layers=1, n_actions=n_actions)
 
 if __name__ == '__main__':
     target_net = DQN(**model_params).eval()
@@ -81,12 +81,12 @@ if __name__ == '__main__':
         target_net=target_net,
         policy_net=policy_net,
         environment=env,
-        temperature=20,
-        annealing=.999,
-        tboard_path='tensorboard/cartpole-qlearning',
+        temperature=100,
+        annealing=.99,
+        tboard_path='tensorboard/grid',
         optimizer=lambda x: optim.RMSprop(x, lr=1e-2),
-        attention_k=10,
-        attention_t=1,
-        use_memory_attention=True
+        # attention_k=10,
+        # attention_t=.5,
+        # use_memory_attention=True
     )
     agent.train(10000)

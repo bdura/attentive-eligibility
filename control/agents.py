@@ -74,7 +74,7 @@ class DQNAgent(BaseAgent):
 
         # TENSORBOARD
         if tboard_path is not None:
-            self.writer = SummaryWriter(tboard_path + time.ctime())
+            self.writer = SummaryWriter(tboard_path + '/' + time.ctime())
 
     def get_config(self):
         """
@@ -331,7 +331,9 @@ class DQNAgent(BaseAgent):
             #     weights = F.softmax(similarity_vec[batch_idx])
             #     trace_vals.append(weights @ self.policy_net(state_trace_batch)[:, action])
             #
-            # trace_value = torch.stack(tensors=trace_vals)
+            # value = torch.stack(tensors=trace_vals)
+            #
+            # print((torch.abs(value - trace_value) < 1e-5).all())
 
             state_action_values = self.alpha * tmp_state_action_values + self.beta * value
         else:
