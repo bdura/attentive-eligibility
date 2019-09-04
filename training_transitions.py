@@ -73,6 +73,8 @@ n_actions = env.action_space.n
 
 model_params = dict(input_dim=n_observations, hidden_dim=100, n_layers=1, n_actions=n_actions)
 
+# model_params.update(dict(n_actions=3))
+
 if __name__ == '__main__':
     target_net = DQN(**model_params).eval()
     policy_net = DQN(**model_params).train()
@@ -82,11 +84,12 @@ if __name__ == '__main__':
         policy_net=policy_net,
         environment=env,
         temperature=100,
-        annealing=.99,
+        annealing=.995,
+        sampling='epsilon',
         tboard_path='tensorboard/grid',
-        optimizer=lambda x: optim.RMSprop(x, lr=1e-2),
-        # attention_k=10,
-        # attention_t=.5,
-        # use_memory_attention=True
+        optimizer=lambda x: optim.RMSprop(x, lr=1e-4),
+        attention_k=10,
+        attention_t=.5,
+        use_memory_attention=True,
     )
-    agent.train(10000)
+    agent.train(1500)

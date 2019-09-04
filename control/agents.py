@@ -21,9 +21,9 @@ import control.utils as utils
 
 DEFAULT_BUFFER_SIZE = 1000
 TARGET_UPDATE = 10
-EPS_START = 0.9
+EPS_START = 0.5
 EPS_END = 0.05
-EPS_DECAY = 200
+EPS_DECAY = 100000
 
 
 class DQNAgent(BaseAgent):
@@ -34,9 +34,9 @@ class DQNAgent(BaseAgent):
     name = 'DQNAgent'
 
     def __init__(self, policy_net, target_net, environment, gamma=.99, temperature=1, annealing=1,
-                 algorithm='expsarsa', use_eligibility=False, use_double_learning=True,
-                 terminal_state=None, buffer_size=DEFAULT_BUFFER_SIZE, optimizer=optim.Adam,
-                 criterion=nn.SmoothL1Loss, batch_size=128, tboard_path='tensorboard/transitions',
+                 algorithm='expsarsa', use_eligibility=False, use_double_learning=True, target_update=TARGET_UPDATE,
+                 terminal_state=None, buffer_size=DEFAULT_BUFFER_SIZE, optimizer=optim.Adam, sampling='boltzmann',
+                 criterion=nn.SmoothL1Loss, batch_size=128, tboard_path='tensorboard/transitions', memoisation=False,
                  use_memory_attention=False, attention_k=10, attention_t=1):
         """
         Initialises the object.
@@ -62,6 +62,10 @@ class DQNAgent(BaseAgent):
         self.target_net.load_state_dict(policy_net.state_dict())
         self.target_net.eval()
 
+        self.memoisation = memoisation
+
+        self.sampling = sampling
+
         self.optimizer = optimizer(policy_net.parameters())
         self.criterion = nn.SmoothL1Loss()
         self.scheduler = MultiStepLR(self.optimizer, gamma=0.3, milestones=[10, 30, 60])
@@ -71,6 +75,8 @@ class DQNAgent(BaseAgent):
         self.annealing = annealing
 
         self.terminal_state = terminal_state
+
+        self.target_update = target_update
 
         # TENSORBOARD
         if tboard_path is not None:
@@ -301,11 +307,13 @@ class DQNAgent(BaseAgent):
         if self.use_memory_attention:
 
             tmp_state_action_values = self.policy_net(state_batch).gather(1, action_batch)
-
             states = torch.cat(Transition(*zip(*self.memory.memory)).state)
 
+            unique_states, states_indices = states.unique(dim=0, return_inverse=True)
+
             # B x M
-            similarity_vec = F.cosine_similarity(state_batch.unsqueeze(1), states.unsqueeze(0), dim=-1)
+            similarity_vec = F.cosine_similarity(state_batch.unsqueeze(1), unique_states.unsqueeze(0), dim=-1)
+            similarity_vec = torch.index_select(similarity_vec, dim=1, index=states_indices)
 
             # Computes the topk values and indices.
             values, indices = torch.topk(similarity_vec, dim=1, k=self.attention_k)
@@ -359,20 +367,29 @@ class DQNAgent(BaseAgent):
 
         return loss
 
-    def select_action(self, state, steps_done):
-        sample = random.random()
-        eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-                        math.exp(-1. * steps_done / EPS_DECAY)
-        if sample > eps_threshold:
-            with torch.no_grad():
-                # t.max(1) will return largest column value of each row.
-                # second column on max result is index of where max element was
-                # found, so we pick action with the larger expected reward.
-                return self.policy_net(state).max(1)[1].view(1, 1)
-        else:
-            return torch.tensor([[random.randrange(self.n_actions)]], device=self.device, dtype=torch.long)
+    def select_action(self, q, t, greedy=False, temperature=1):
 
-    def episode(self, steps_done=0, temperature=1, greedy=False):
+        if greedy:
+            return q.max(1)[1].view(1, 1)
+        elif self.sampling == 'boltzmann':
+            p = F.softmax(q / temperature, dim=1)
+            return torch.multinomial(p, num_samples=1).view(1, 1)
+        elif self.sampling == 'epsilon':
+            sample = random.random()
+            eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+                            math.exp(-1. * t / EPS_DECAY)
+            if sample > eps_threshold:
+                with torch.no_grad():
+                    # t.max(1) will return largest column value of each row.
+                    # second column on max result is index of where max element was
+                    # found, so we pick action with the larger expected reward.
+                    return q.max(1)[1].view(1, 1)
+            else:
+                return torch.tensor([[random.randrange(self.n_actions)]], device=self.device, dtype=torch.long)
+        else:
+            raise ValueError('This sampling method is not recognised.')
+
+    def episode(self, steps_done=0, episode=0, temperature=1, greedy=False):
 
         if greedy:
             network = self.policy_net
@@ -386,11 +403,13 @@ class DQNAgent(BaseAgent):
         for t in count():
             # Select and perform an action
             q = network(state)
-            if greedy:
-                action = q.max(1)[1].view(1, 1)
-            else:
-                p = F.softmax(q / temperature, dim=1)
-                action = torch.multinomial(p, num_samples=1).view(1, 1)
+
+            action = self.select_action(q, t=steps_done + t, greedy=greedy, temperature=temperature)
+
+            if t == 0:
+                for i, q_ in enumerate(q[0]):
+                    self.writer.add_scalar(f'q/v{i}', q_, episode)
+                self.writer.add_scalar(f'q/argmax', q[0].argmax(), episode)
 
             s, reward, done, _ = self.environment.step(action.item())
 
@@ -430,6 +449,7 @@ class DQNAgent(BaseAgent):
 
             full_return, duration = self.episode(
                 steps_done=steps_done,
+                episode=i_episode,
                 temperature=temperature,
             )
             steps_done += duration
@@ -438,11 +458,11 @@ class DQNAgent(BaseAgent):
             self.writer.add_scalar('exploration/return', full_return, i_episode)
 
             # Update the target network, copying all weights and biases in DQN
-            if i_episode % TARGET_UPDATE == 0:
+            if i_episode % self.target_update == 0:
                 self.target_net.load_state_dict(self.policy_net.state_dict())
 
             if i_episode % 10 == 0:
-                full_return, duration = self.episode(steps_done, greedy=True)
+                full_return, duration = self.episode(steps_done, greedy=True, episode=i_episode)
                 self.writer.add_scalar('greedy/duration', duration, i_episode)
                 self.writer.add_scalar('greedy/return', full_return, i_episode)
 
