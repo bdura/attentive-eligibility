@@ -74,6 +74,9 @@ class CustomEmptyEnv(MiniGridEnv):
         # Create an empty grid
         self.grid = Grid(width, height)
 
+        # Re-seed to have a consistent environment
+        np.random.seed(0)
+
         # Generate the surrounding walls
         self.grid.wall_rect(0, 0, width, height, noise=self.noise)
 
