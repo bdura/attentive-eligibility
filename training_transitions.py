@@ -1,5 +1,6 @@
 import torch
 from gym_minigrid.wrappers import *
+from environment import grids
 from torch import nn
 from torch import optim
 
@@ -62,7 +63,8 @@ class CustomTensorized(gym.core.ObservationWrapper):
         return torch.flatten(torch.tensor(obs))
 
 
-env = gym.make('MiniGrid-Empty-5x5-v0')
+# env = gym.make('MiniGrid-Empty-5x5-v0')
+env = grids.CustomEmptyEnv3x8()
 env = CustomFullyObsWrapper(env)
 
 # env = gym.make('CartPole-v0')

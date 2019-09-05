@@ -7,6 +7,8 @@ from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 import time
 
+from functools import lru_cache
+
 from control.utils import BaseAgent
 from control.replay import ReplayMemory
 from torch import optim
@@ -309,14 +311,24 @@ class DQNAgent(BaseAgent):
             tmp_state_action_values = self.policy_net(state_batch).gather(1, action_batch)
             states = torch.cat(Transition(*zip(*self.memory.memory)).state)
 
-            unique_states, states_indices = states.unique(dim=0, return_inverse=True)
+            unique_states, states_indices, states_counts = states.unique(dim=0, return_inverse=True, return_counts=True)
 
             # B x M
             similarity_vec = F.cosine_similarity(state_batch.unsqueeze(1), unique_states.unsqueeze(0), dim=-1)
-            similarity_vec = torch.index_select(similarity_vec, dim=1, index=states_indices)
+            # similarity_vec = torch.index_select(similarity_vec, dim=1, index=states_indices)
 
             # Computes the topk values and indices.
-            values, indices = torch.topk(similarity_vec, dim=1, k=self.attention_k)
+            values, indices = torch.topk(similarity_vec, dim=1, k=self.attention_k, sorted=True)
+
+            topk = torch.index_select(states_counts, index=indices.view(-1))
+            n = topk.cumsum(dim=0)
+            max_i = len(n[n <= self.attention_k])
+
+            if n[max_i] < self.attention_k:
+                max_i += 1
+
+            actual_indices = torch.index_select(states_indices, index=indices.view(-1))
+            values = values[max_i]
 
             # Obtains the softmax weights
             weights = F.softmax(values / self.attention_t, dim=1)
